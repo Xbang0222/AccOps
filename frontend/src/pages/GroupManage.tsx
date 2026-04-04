@@ -21,8 +21,6 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  UserAddOutlined,
-  CrownOutlined,
   MoreOutlined,
   TeamOutlined,
   UserOutlined,
@@ -31,9 +29,9 @@ import {
   SearchOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import {
   getGroupList,
-  getGroup,
   createGroup,
   updateGroup,
   deleteGroup,
@@ -43,12 +41,12 @@ import {
 } from '@/api';
 import type { Group, Account } from '@/types';
 import { maskEmail } from '@/utils/mask';
-import GroupDetail from './GroupDetail';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
 const GroupManage: React.FC = () => {
+  const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,9 +57,6 @@ const GroupManage: React.FC = () => {
   const [form] = Form.useForm();
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
   const loadIdRef = useRef(0);
-
-  // 二级视图: 详情页
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
 
   useEffect(() => {
     loadGroups();
@@ -169,16 +164,6 @@ const GroupManage: React.FC = () => {
 
   const memberCount = (group: Group) => group.accounts?.length ?? 0;
 
-  // 如果选中了分组 → 显示详情页
-  if (selectedGroupId !== null) {
-    return (
-      <GroupDetail
-        groupId={selectedGroupId}
-        onBack={() => { setSelectedGroupId(null); loadGroups(); }}
-      />
-    );
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 工具栏 */}
@@ -225,7 +210,7 @@ const GroupManage: React.FC = () => {
                       size="small"
                       className="hover-card"
                       hoverable
-                      onClick={() => setSelectedGroupId(group.id)}
+                      onClick={() => navigate(`/groups/${group.id}`)}
                       style={{
                         borderRadius: 12,
                         border: '1px solid #f0f0f0',

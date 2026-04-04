@@ -13,39 +13,16 @@ from typing import Optional, Tuple, Dict, List
 
 import httpx
 
-logger = logging.getLogger(__name__)
+from core.constants import (
+    COUNTRY_PHONE_CODES,
+    HEROSMS_DEFAULT_URL,
+    SMSBUS_DEFAULT_URL,
+    SMS_WAIT_TIMEOUT,
+    SMS_POLL_INTERVAL,
+    SMS_HTTP_TIMEOUT,
+)
 
-# 国家名称 → 电话区号映射 (常见国家)
-COUNTRY_PHONE_CODES: Dict[str, str] = {
-    "Russia": "+7", "Ukraine": "+380", "Kazakhstan": "+7", "China": "+86",
-    "Philippines": "+63", "Indonesia": "+62", "Malaysia": "+60", "Kenya": "+254",
-    "Tanzania": "+255", "Vietnam": "+84", "South Africa": "+27", "Myanmar": "+95",
-    "India": "+91", "Hong Kong": "+852", "Poland": "+48", "England": "+44",
-    "USA": "+1", "Thailand": "+66", "Iraq": "+964", "Nigeria": "+234",
-    "Colombia": "+57", "Bangladesh": "+880", "Turkey": "+90", "Germany": "+49",
-    "France": "+33", "Canada": "+1", "Sweden": "+46", "Netherlands": "+31",
-    "Spain": "+34", "Portugal": "+351", "Italy": "+39", "Mexico": "+52",
-    "Argentina": "+54", "Brazil": "+55", "Pakistan": "+92", "Cambodia": "+855",
-    "Laos": "+856", "Nepal": "+977", "Egypt": "+20", "Ireland": "+353",
-    "Australia": "+61", "Taiwan": "+886", "Japan": "+81", "South Korea": "+82",
-    "Singapore": "+65", "Saudi Arabia": "+966", "Israel": "+972", "Peru": "+51",
-    "Chile": "+56", "Morocco": "+212", "Romania": "+40", "Hungary": "+36",
-    "Czech Republic": "+420", "Austria": "+43", "Belgium": "+32", "Switzerland": "+41",
-    "Denmark": "+45", "Norway": "+47", "Finland": "+358", "Greece": "+30",
-    "Estonia": "+372", "Latvia": "+371", "Lithuania": "+370", "Croatia": "+385",
-    "Serbia": "+381", "Bulgaria": "+359", "Slovakia": "+421", "Slovenia": "+386",
-    "New Zealand": "+64", "UAE": "+971", "Georgia": "+995", "Armenia": "+374",
-    "Azerbaijan": "+994", "Moldova": "+373", "Belarus": "+375", "Uzbekistan": "+998",
-    "Kyrgyzstan": "+996", "Tajikistan": "+992", "Turkmenistan": "+993",
-    "Ghana": "+233", "Uganda": "+256", "Cameroon": "+237", "Ethiopia": "+251",
-    "Ivory Coast": "+225", "Senegal": "+221", "Algeria": "+213", "Tunisia": "+216",
-    "Afghanistan": "+93", "Bolivia": "+591", "Costa Rica": "+506",
-    "Dominican Republic": "+1", "Ecuador": "+593", "El Salvador": "+503",
-    "Guatemala": "+502", "Haiti": "+509", "Honduras": "+504", "Jamaica": "+1",
-    "Nicaragua": "+505", "Panama": "+507", "Paraguay": "+595", "Uruguay": "+598",
-    "Venezuela": "+58", "Cuba": "+53", "Puerto Rico": "+1",
-    "United Kingdom": "+44", "UK": "+44",
-}
+logger = logging.getLogger(__name__)
 
 
 def _get_phone_code(country_name: str) -> str:
@@ -116,8 +93,8 @@ class SmsProviderBase(ABC):
         """返回: [{country_id, country_name, count, price}]"""
         ...
 
-    def wait_for_code(self, activation_id: str, timeout: int = 120,
-                      interval: float = 5.0) -> Tuple[bool, str, str]:
+    def wait_for_code(self, activation_id: str, timeout: int = SMS_WAIT_TIMEOUT,
+                      interval: float = SMS_POLL_INTERVAL) -> Tuple[bool, str, str]:
         """轮询等待验证码 (通用实现)
         返回: (成功?, 纯验证码, 完整短信)
         """
@@ -152,18 +129,18 @@ class HeroSmsProvider(SmsProviderBase):
 
     @property
     def default_base_url(self) -> str:
-        return "https://hero-sms.com/stubs/handler_api.php"
+        return HEROSMS_DEFAULT_URL
 
     def _get(self, action: str, **params) -> str:
         params["action"] = action
         params["api_key"] = self.api_key
-        resp = httpx.get(self.base_url, params=params, timeout=30)
+        resp = httpx.get(self.base_url, params=params, timeout=SMS_HTTP_TIMEOUT)
         return resp.text.strip()
 
     def _get_json(self, action: str, **params) -> dict:
         params["action"] = action
         params["api_key"] = self.api_key
-        resp = httpx.get(self.base_url, params=params, timeout=30)
+        resp = httpx.get(self.base_url, params=params, timeout=SMS_HTTP_TIMEOUT)
         return resp.json()
 
     def get_balance(self) -> Tuple[bool, str]:
@@ -288,12 +265,12 @@ class SmsBusProvider(SmsProviderBase):
 
     @property
     def default_base_url(self) -> str:
-        return "https://sms-bus.com/api/control"
+        return SMSBUS_DEFAULT_URL
 
     def _get(self, path: str, **params) -> dict:
         params["token"] = self.api_key
         url = f"{self.base_url}/{path}"
-        resp = httpx.get(url, params=params, timeout=30)
+        resp = httpx.get(url, params=params, timeout=SMS_HTTP_TIMEOUT)
         return resp.json()
 
     def get_balance(self) -> Tuple[bool, str]:

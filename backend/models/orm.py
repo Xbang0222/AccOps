@@ -12,6 +12,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship, DeclarativeBase
 
+from core.constants import (
+    DEFAULT_SCREEN_WIDTH,
+    DEFAULT_SCREEN_HEIGHT,
+    DEFAULT_OS_TYPE,
+    DEFAULT_LANGUAGE,
+    DEFAULT_SMS_COUNTRY,
+)
+
 
 class Base(DeclarativeBase):
     pass
@@ -83,11 +91,11 @@ class BrowserProfile(Base):
 
     # 指纹
     user_agent = Column(Text, default="")
-    os_type = Column(String, default="macos")        # windows / macos / linux
+    os_type = Column(String, default=DEFAULT_OS_TYPE)        # windows / macos / linux
     timezone = Column(String, default="")            # e.g. America/New_York
-    language = Column(String, default="en-US")
-    screen_width = Column(Integer, default=1920)
-    screen_height = Column(Integer, default=1080)
+    language = Column(String, default=DEFAULT_LANGUAGE)
+    screen_width = Column(Integer, default=DEFAULT_SCREEN_WIDTH)
+    screen_height = Column(Integer, default=DEFAULT_SCREEN_HEIGHT)
     webrtc_disabled = Column(Boolean, default=True)
 
     notes = Column(Text, default="")
@@ -106,7 +114,7 @@ class SmsProvider(Base):
     name = Column(String, nullable=False)  # 显示名称, 如 "HeroSMS 主号"
     provider_type = Column(String, nullable=False, default="herosms")  # herosms / smsbus
     api_key = Column(Text, default="")
-    default_country = Column(Integer, default=2)  # 该提供商的默认国家
+    default_country = Column(Integer, default=DEFAULT_SMS_COUNTRY)  # 该提供商的默认国家
     default_service = Column(String, default="go")  # 该提供商的默认服务
     balance = Column(String, default="")  # 缓存余额
     notes = Column(Text, default="")

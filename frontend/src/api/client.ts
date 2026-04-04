@@ -1,7 +1,8 @@
 /** Axios 实例 + 拦截器 */
 import axios from 'axios';
+import { config } from '@/config';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = config.apiBaseUrl;
 export const API_PREFIX = '/api/v1';
 
 const client = axios.create({

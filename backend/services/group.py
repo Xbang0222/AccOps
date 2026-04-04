@@ -5,12 +5,13 @@ from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from models.orm import Group, Account
 from services.account import AccountService
+from core.constants import FAMILY_MAX_MEMBERS
 
 
 class GroupService:
     """分组业务逻辑"""
 
-    MAX_MEMBERS = 6  # 1 个主号 + 5 个子号
+    MAX_MEMBERS = FAMILY_MAX_MEMBERS  # 1 个主号 + 5 个子号
 
     def __init__(self, db: Session, account_service: AccountService):
         self.db = db

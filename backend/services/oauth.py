@@ -22,35 +22,42 @@ from typing import Optional, Tuple
 import httpx
 import pyotp
 
+from core.constants import (
+    OAUTH_CLIENT_ID as CLIENT_ID,
+    OAUTH_CLIENT_SECRET as CLIENT_SECRET,
+    OAUTH_SCOPES as SCOPES,
+    OAUTH_AUTH_ENDPOINT as AUTH_ENDPOINT,
+    OAUTH_TOKEN_ENDPOINT as TOKEN_ENDPOINT,
+    OAUTH_USERINFO_ENDPOINT as USERINFO_ENDPOINT,
+    OAUTH_REDIRECT_URI as REDIRECT_URI,
+    ANTIGRAVITY_API_ENDPOINT as API_ENDPOINT,
+    ANTIGRAVITY_API_VERSION as API_VERSION,
+    ANTIGRAVITY_DAILY_ENDPOINT,
+    ANTIGRAVITY_STREAM_PATH,
+    ANTIGRAVITY_API_USER_AGENT as API_USER_AGENT,
+    ANTIGRAVITY_API_CLIENT as API_CLIENT,
+    ANTIGRAVITY_CLIENT_METADATA as CLIENT_METADATA,
+    ANTIGRAVITY_DEFAULT_MODEL,
+    FAMILY_HTTP_TIMEOUT,
+    SEL_PASSWORD_INPUT,
+    SEL_TOTP_INPUT,
+    SEL_OAUTH_APPROVE,
+    SEL_OAUTH_ALLOW,
+    SEL_OAUTH_ALLOW_CN,
+    SEL_OAUTH_CONTINUE,
+    SEL_OAUTH_CONTINUE_CN,
+    SEL_OAUTH_BTN_ALLOW,
+    SEL_OAUTH_BTN_CONTINUE,
+    SEL_PHONE_NUMBER_INPUT,
+    SEL_PHONE_CODE_INPUT,
+    SEL_PHONE_VERIFY_NEXT,
+    SMS_WAIT_TIMEOUT,
+    SMS_POLL_INTERVAL,
+)
+from services.auth_steps import enter_password, enter_totp
 from services.browser import browser_manager
 
 logger = logging.getLogger(__name__)
-
-# ── OAuth 常量 (Google Cloud Code / Antigravity 内置客户端凭据) ───────
-
-CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-CLIENT_SECRET = "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"
-
-SCOPES = [
-    "https://www.googleapis.com/auth/cloud-platform",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/cclog",
-    "https://www.googleapis.com/auth/experimentsandconfigs",
-]
-
-AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
-TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
-USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v1/userinfo?alt=json"
-
-API_ENDPOINT = "https://cloudcode-pa.googleapis.com"
-API_VERSION = "v1internal"
-API_USER_AGENT = "google-api-nodejs-client/9.15.1"
-API_CLIENT = "google-cloud-sdk vscode_cloudshelleditor/0.1"
-CLIENT_METADATA = '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}'
-
-# OAuth 回调使用 localhost 重定向 (无需真正的回调服务器, 浏览器会导航到该 URL)
-REDIRECT_URI = "http://localhost:51121/oauth-callback"
 
 
 # ── 工具函数 ─────────────────────────────────────────────
@@ -84,7 +91,7 @@ def exchange_code_for_tokens(code: str) -> dict:
         TOKEN_ENDPOINT,
         data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=30,
+        timeout=FAMILY_HTTP_TIMEOUT,
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Token 交换失败: HTTP {resp.status_code} - {resp.text[:200]}")
@@ -96,7 +103,7 @@ def fetch_user_info(access_token: str) -> str:
     resp = httpx.get(
         USERINFO_ENDPOINT,
         headers={"Authorization": f"Bearer {access_token}"},
-        timeout=30,
+        timeout=FAMILY_HTTP_TIMEOUT,
     )
     if resp.status_code != 200:
         raise RuntimeError(f"获取用户信息失败: HTTP {resp.status_code}")
@@ -123,7 +130,7 @@ def fetch_project_id(access_token: str) -> str:
             "X-Goog-Api-Client": API_CLIENT,
             "Client-Metadata": CLIENT_METADATA,
         },
-        timeout=30,
+        timeout=FAMILY_HTTP_TIMEOUT,
     )
     if resp.status_code != 200:
         # 尝试 onboard
@@ -173,7 +180,7 @@ def _onboard_user(access_token: str, tier_id: str = "legacy-tier") -> str:
                 "X-Goog-Api-Client": API_CLIENT,
                 "Client-Metadata": CLIENT_METADATA,
             },
-            timeout=30,
+            timeout=FAMILY_HTTP_TIMEOUT,
         )
         if resp.status_code != 200:
             raise RuntimeError(f"onboardUser 失败: HTTP {resp.status_code} - {resp.text[:200]}")
@@ -195,9 +202,6 @@ def _onboard_user(access_token: str, tier_id: str = "legacy-tier") -> str:
 
 # ── API 可用性探测 ─────────────────────────────────────────
 
-ANTIGRAVITY_DAILY_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com"
-ANTIGRAVITY_STREAM_PATH = "/v1internal:streamGenerateContent"
-
 
 def probe_api(access_token: str, project_id: str = "") -> Tuple[bool, str, Optional[str]]:
     """发送一次简单的 streamGenerateContent 请求来探测 API 是否可用
@@ -214,7 +218,7 @@ def probe_api(access_token: str, project_id: str = "") -> Tuple[bool, str, Optio
     session_id = f"-{int(time.time() * 1000)}"
 
     payload = {
-        "model": "claude-sonnet-4-20250514",
+        "model": ANTIGRAVITY_DEFAULT_MODEL,
         "userAgent": "antigravity",
         "requestType": "agent",
         "project": project_id or "probe-test-00000",
@@ -242,7 +246,7 @@ def probe_api(access_token: str, project_id: str = "") -> Tuple[bool, str, Optio
     }
 
     try:
-        resp = httpx.post(url, json=payload, headers=headers, timeout=30)
+        resp = httpx.post(url, json=payload, headers=headers, timeout=FAMILY_HTTP_TIMEOUT)
 
         if resp.status_code == 200:
             return True, "API 可用", None
@@ -321,7 +325,7 @@ def _is_password_page(page) -> bool:
     if "challenge/pwd" in url or "signin/v2/challenge/password" in url:
         return True
     # 检查是否有密码输入框
-    pwd = page.ele("@name=Passwd", timeout=0.5) or page.ele('input[type="password"]', timeout=0.5)
+    pwd = page.ele(SEL_PASSWORD_INPUT, timeout=0.5) or page.ele('input[type="password"]', timeout=0.5)
     return bool(pwd)
 
 
@@ -330,27 +334,16 @@ def _is_totp_page(page) -> bool:
     url = page.url
     if "challenge/totp" in url or "challenge/selection" in url:
         return True
-    totp_input = page.ele("#totpPin", timeout=0.5) or page.ele('input[type="tel"]', timeout=0.5)
+    totp_input = page.ele(SEL_TOTP_INPUT, timeout=0.5) or page.ele('input[type="tel"]', timeout=0.5)
     return bool(totp_input)
 
 
 def _handle_password(page, password: str, tracker) -> bool:
     """处理密码输入页面，返回是否成功"""
-    pwd_input = page.ele("@name=Passwd", timeout=3) or page.ele('input[type="password"]', timeout=3)
-    if not pwd_input:
+    ok = enter_password(page, password, timeout=3)
+    if not ok:
         tracker.step("密码验证", "fail", "找不到密码输入框")
         return False
-
-    pwd_input.input(password)
-    time.sleep(0.5)
-    next_btn = (
-        page.ele("#passwordNext", timeout=3)
-        or page.ele("text:Next", timeout=2)
-        or page.ele("text:下一步", timeout=2)
-    )
-    if next_btn:
-        next_btn.click()
-        time.sleep(3)
     tracker.step("密码验证", "ok")
     return True
 
@@ -361,34 +354,10 @@ def _handle_totp(page, totp_secret: str, tracker) -> bool:
         tracker.step("2FA 验证", "fail", "需要 2FA 但账号未配置 TOTP")
         return False
 
-    code = pyotp.TOTP(totp_secret.replace(' ', '')).now()
-
-    # 如果在 challenge/selection 页面, 先选择 Authenticator
-    if "challenge/selection" in page.url:
-        opt = (
-            page.ele("text:Authenticator", timeout=3)
-            or page.ele("text:Google Authenticator", timeout=2)
-            or page.ele("text:验证器", timeout=2)
-        )
-        if opt:
-            opt.click()
-            time.sleep(2)
-
-    totp_input = page.ele("#totpPin", timeout=5) or page.ele('input[type="tel"]', timeout=5)
-    if not totp_input:
+    ok = enter_totp(page, totp_secret, timeout=5)
+    if not ok:
         tracker.step("2FA 验证", "fail", "找不到 TOTP 输入框")
         return False
-
-    totp_input.input(code)
-    time.sleep(0.5)
-    btn = (
-        page.ele("#totpNext", timeout=3)
-        or page.ele("text:Next", timeout=2)
-        or page.ele("text:下一步", timeout=2)
-    )
-    if btn:
-        btn.click()
-        time.sleep(3)
 
     tracker.step("2FA 验证", "ok", f"已输入验证码")
     return True
@@ -398,13 +367,13 @@ def _try_click_consent_buttons(page) -> bool:
     """尝试点击 OAuth 同意页面上的各种按钮, 返回是否点击了按钮"""
     # Google OAuth 同意页面上的各种按钮变体
     selectors = [
-        "#submit_approve_access",           # OAuth 同意页 "Allow" 按钮
-        "text:Allow",                       # Allow 文字按钮
-        "text:允许",                        # 中文 Allow
-        "text:Continue",                    # Continue 按钮
-        "text:继续",                        # 中文 Continue
-        'button:has-text("Allow")',         # button 内含 Allow
-        'button:has-text("Continue")',      # button 内含 Continue
+        SEL_OAUTH_APPROVE,              # OAuth 同意页 "Allow" 按钮
+        SEL_OAUTH_ALLOW,                # Allow 文字按钮
+        SEL_OAUTH_ALLOW_CN,             # 中文 Allow
+        SEL_OAUTH_CONTINUE,             # Continue 按钮
+        SEL_OAUTH_CONTINUE_CN,          # 中文 Continue
+        SEL_OAUTH_BTN_ALLOW,            # button 内含 Allow
+        SEL_OAUTH_BTN_CONTINUE,         # button 内含 Continue
     ]
     for sel in selectors:
         try:
@@ -632,7 +601,7 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
         {"success": bool, "message": str}
     """
     from services.automation import StepTracker
-    from models.database import SessionLocal
+    from models.database import get_db_session
     from models.orm import Config, SmsProvider
     from services.sms_api import create_provider
 
@@ -641,13 +610,12 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
     try:
         # Step 1: 获取接码提供商
         tracker.step("获取接码配置", "info")
-        db = SessionLocal()
-        try:
+        with get_db_session() as db:
             # 读取默认提供商
             row = db.query(Config).filter(Config.key == "default_sms_provider_id").first()
             provider = None
             if row:
-                provider = db.query(SmsProvider).get(int(row.value))
+                provider = db.query(SmsProvider).filter(SmsProvider.id == int(row.value)).first()
             if not provider:
                 provider = db.query(SmsProvider).first()
             if not provider or not provider.api_key:
@@ -657,8 +625,6 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
             service = provider.default_service or "go"
             country = provider.default_country or 2
             tracker.step("接码配置", "ok", f"{provider.name} | 服务={service} 国家={country}")
-        finally:
-            db.close()
 
         # Step 2: 打开验证页面
         tracker.step("打开验证页面", "info")
@@ -693,7 +659,7 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
         tracker.step("输入手机号", "info", phone_number)
 
         # 查找手机号输入框
-        phone_input = page.ele("#phoneNumberId", timeout=5) or page.ele("input[type='tel']", timeout=3)
+        phone_input = page.ele(SEL_PHONE_NUMBER_INPUT, timeout=5) or page.ele("input[type='tel']", timeout=3)
         if not phone_input:
             sms_api.cancel(activation_id)
             return tracker.result(False, "找不到手机号输入框", step="phone_input")
@@ -728,7 +694,7 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
 
         # Step 6: 等待验证码
         tracker.step("等待验证码", "info", f"轮询中 (activation={activation_id})")
-        code_ok, code, sms_text = sms_api.wait_for_code(activation_id, timeout=120, interval=5)
+        code_ok, code, sms_text = sms_api.wait_for_code(activation_id, timeout=SMS_WAIT_TIMEOUT, interval=SMS_POLL_INTERVAL)
         if not code_ok:
             sms_api.cancel(activation_id)
             return tracker.result(False, f"未收到验证码: {sms_text}", step="wait_code")
@@ -739,7 +705,7 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
 
         # 查找验证码输入框 (Google 用 #idvAnyPhonePin)
         code_input = (
-            page.ele("#idvAnyPhonePin", timeout=5)
+            page.ele(SEL_PHONE_CODE_INPUT, timeout=5)
             or page.ele("#code", timeout=3)
             or page.ele("input[type='tel']", timeout=3)
         )
@@ -754,7 +720,7 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
 
         # 点确认 (Google 用 #idvanyphoneverifyNext)
         verify_btn = (
-            page.ele("#idvanyphoneverifyNext", timeout=3)
+            page.ele(SEL_PHONE_VERIFY_NEXT, timeout=3)
             or page.ele("text:Next", timeout=2)
             or page.ele("text:Verify", timeout=2)
             or page.ele("text:下一步", timeout=2)

@@ -4,13 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import config
-from models.database import ensure_schema_updates
+from models.database import run_migrations
 from routers import auth, accounts, groups, dashboard, browser, automation, settings, sms
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    ensure_schema_updates()
+    run_migrations()
     yield
     from services.browser import browser_manager
     await browser_manager.stop_all()

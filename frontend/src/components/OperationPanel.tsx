@@ -31,10 +31,9 @@ import {
 } from '@ant-design/icons';
 import type { Account } from '@/types';
 import { discoverFamily } from '@/api';
+import { useAutomationWs } from '@/hooks/useAutomationWs';
 
 const { Text } = Typography;
-
-const WS_URL = 'ws://localhost:8000/api/v1/ws/automation';
 
 interface OperationPanelProps {
   account: Account;
@@ -58,18 +57,6 @@ interface OpDef {
   danger?: boolean;
   /** 可见性: 'any'=所有人, 'owner'=家庭组管理员, 'member'=家庭组成员, 'no-group'=未加入家庭组 */
   role?: 'any' | 'owner' | 'member' | 'no-group';
-}
-
-/** WebSocket 步骤消息 */
-interface StepMsg {
-  type: 'step' | 'result' | 'error';
-  step?: number;
-  name?: string;
-  status?: string;
-  message?: string;
-  success?: boolean;
-  duration_ms?: number;
-  timestamp?: string;
 }
 
 const OPERATIONS: OpDef[] = [
@@ -182,22 +169,35 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
 }) => {
   const { message: msg } = App.useApp();
 
-  // 当前正在执行的操作 key
-  const [runningOp, setRunningOp] = useState<string | null>(null);
+  // REST 操作的独立 running 状态 (discover)
+  const [discoverRunning, setDiscoverRunning] = useState(false);
   // 各操作的最终状态: 'success' | 'fail'
   const [opResults, setOpResults] = useState<Record<string, 'success' | 'fail'>>({});
-  // 实时步骤日志
-  const [steps, setSteps] = useState<StepMsg[]>([]);
-  // 最终结果消息
-  const [resultMsg, setResultMsg] = useState<string>('');
   // 子弹窗
   const [activeOp, setActiveOp] = useState<OpDef | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   // 多邮箱选择 (邀请/移除)
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
 
-  const wsRef = useRef<WebSocket | null>(null);
   const stepsEndRef = useRef<HTMLDivElement | null>(null);
+
+  const ws = useAutomationWs({
+    onSuccess: (opKey, message) => {
+      setOpResults((prev) => ({ ...prev, [opKey]: 'success' }));
+      msg.success(message);
+      onRefreshAccount?.();
+    },
+    onFail: (opKey, message) => {
+      setOpResults((prev) => ({ ...prev, [opKey]: 'fail' }));
+      msg.warning(message);
+    },
+    onError: (opKey, message) => {
+      setOpResults((prev) => ({ ...prev, [opKey]: 'fail' }));
+      msg.error(message);
+    },
+  });
+
+  const { runningOp, steps, resultMsg } = ws;
 
   // 自动滚动到最新步骤
   useEffect(() => {
@@ -207,81 +207,9 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
   /** 通过 WebSocket 执行操作 */
   const executeViaWs = useCallback(
     (action: string, extra: Record<string, string> = {}, opKey?: string) => {
-      const trackKey = opKey || action;
-      const token = localStorage.getItem('token') || '';
-      const ws = new WebSocket(`${WS_URL}?token=${token}`);
-      wsRef.current = ws;
-
-      setRunningOp(trackKey);
-      setSteps([]);
-      setResultMsg('');
-
-      ws.onopen = () => {
-        ws.send(
-          JSON.stringify({
-            action,
-            account_id: account.id,
-            ...extra,
-          }),
-        );
-      };
-
-      ws.onmessage = (e) => {
-        try {
-          const data: StepMsg = JSON.parse(e.data);
-
-          if (data.type === 'step') {
-            setSteps((prev) => {
-              // 如果是 running 状态，追加新步骤
-              if (data.status === 'running') {
-                return [...prev, data];
-              }
-              // 否则更新最后一个同名步骤的状态
-              const updated = [...prev];
-              const idx = (() => { for (let i = updated.length - 1; i >= 0; i--) { if (updated[i].step === data.step) return i; } return -1; })();
-              if (idx >= 0) {
-                updated[idx] = data;
-              } else {
-                updated.push(data);
-              }
-              return updated;
-            });
-          } else if (data.type === 'result') {
-            setRunningOp(null);
-            const isOk = data.success ?? false;
-            setOpResults((prev) => ({ ...prev, [trackKey]: isOk ? 'success' : 'fail' }));
-            setResultMsg(data.message || '');
-            if (isOk) {
-              msg.success(data.message || '操作成功');
-              onRefreshAccount?.();
-            } else {
-              msg.warning(data.message || '操作失败');
-            }
-            ws.close();
-          } else if (data.type === 'error') {
-            setRunningOp(null);
-            setOpResults((prev) => ({ ...prev, [trackKey]: 'fail' }));
-            setResultMsg(data.message || '操作异常');
-            msg.error(data.message || '操作异常');
-            ws.close();
-          }
-        } catch {
-          // ignore parse errors
-        }
-      };
-
-      ws.onerror = () => {
-        setRunningOp(null);
-        setOpResults((prev) => ({ ...prev, [trackKey]: 'fail' }));
-        setResultMsg('WebSocket 连接失败');
-        msg.error('WebSocket 连接失败');
-      };
-
-      ws.onclose = () => {
-        wsRef.current = null;
-      };
+      ws.execute(account.id, action, extra, opKey);
     },
-    [account.id, msg],
+    [account.id, ws.execute],
   );
 
   /** 替换成员: 后端一体化操作 (移除旧成员 → 邀请新成员 → 可选自动接受) */
@@ -294,32 +222,26 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
 
   /** 纯 HTTP 同步家庭组 */
   const handleDiscover = async () => {
-    setRunningOp('family-discover');
-    setSteps([]);
-    setResultMsg('');
+    setDiscoverRunning(true);
     try {
       const { data } = await discoverFamily(account.id);
       if (data.success) {
         msg.success(data.message || '同步成功');
         setOpResults((prev) => ({ ...prev, 'family-discover': 'success' }));
-        setResultMsg(data.message || '同步成功');
         onRefreshAccount?.();
       } else if (data.cookies_expired) {
         msg.warning(data.message || 'Cookies 已过期，请重新登录');
         setOpResults((prev) => ({ ...prev, 'family-discover': 'fail' }));
-        setResultMsg(data.message || 'Cookies 已过期');
       } else {
         msg.warning(data.message || '同步失败');
         setOpResults((prev) => ({ ...prev, 'family-discover': 'fail' }));
-        setResultMsg(data.message || '同步失败');
       }
     } catch (err: any) {
       const errMsg = err.response?.data?.detail || '同步请求失败';
       msg.error(errMsg);
       setOpResults((prev) => ({ ...prev, 'family-discover': 'fail' }));
-      setResultMsg(errMsg);
     } finally {
-      setRunningOp(null);
+      setDiscoverRunning(false);
     }
   };
 
@@ -406,7 +328,7 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
     }
   };
 
-  const isAnyRunning = runningOp !== null;
+  const isAnyRunning = runningOp !== null || discoverRunning;
 
   // 计算当前账号的家庭组角色
   const hasGroup = !!account.family_group_id;
@@ -472,7 +394,7 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
         {visibleOps.map((op) => {
           const result = opResults[op.key];
           const isBrowser = op.key === 'browser';
-          const isThisRunning = runningOp === op.key;
+          const isThisRunning = runningOp === op.key || (op.key === 'family-discover' && discoverRunning);
           const disabled =
             isAnyRunning ||
             (isBrowser && browserLoading) ||

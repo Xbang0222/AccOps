@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Button,
   Input,
@@ -38,7 +38,6 @@ import {
   deleteAccount,
   getGroups,
   getTags,
-  getTOTP,
   importAccounts,
   getBrowserProfiles,
   createBrowserProfile,
@@ -48,6 +47,8 @@ import {
 import type { Account } from '@/types';
 import AccountModal from '@/components/AccountModal';
 import { maskEmail } from '@/utils/mask';
+import { generateTOTP } from '@/utils/totp';
+import { useAutomationWs } from '@/hooks/useAutomationWs';
 
 const { Text } = Typography;
 
@@ -89,6 +90,12 @@ const AccountsPage: React.FC = () => {
   const [browserRunning, setBrowserRunning] = useState<Set<number>>(new Set());
   const [browserLoading, setBrowserLoading] = useState<Set<number>>(new Set());
   const [profileMap, setProfileMap] = useState<Record<number, number>>({});
+
+  const loginWs = useAutomationWs({
+    onSuccess: (_opKey, message) => { msg.success(message); },
+    onFail: (_opKey, message) => { msg.warning(message); },
+    onError: (_opKey, message) => { msg.error(message); },
+  });
 
   useEffect(() => {
     loadAccounts();
@@ -136,8 +143,6 @@ const AccountsPage: React.FC = () => {
     } catch { /* silent */ }
   };
 
-  const WS_URL = 'ws://localhost:8000/api/v1/ws/automation';
-
   const handleLaunchAndLogin = async (record: Account) => {
     const accountId = record.id;
     setBrowserLoading((prev) => new Set(prev).add(accountId));
@@ -161,25 +166,7 @@ const AccountsPage: React.FC = () => {
       msg.success('浏览器已启动，开始自动登录...');
 
       // 通过 WebSocket 触发自动登录（不显示日志）
-      const token = localStorage.getItem('token') || '';
-      const ws = new WebSocket(`${WS_URL}?token=${token}`);
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ action: 'login', account_id: accountId }));
-      };
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.type === 'result') {
-            if (data.success) msg.success(data.message || '登录成功');
-            else msg.warning(data.message || '登录失败');
-            ws.close();
-          } else if (data.type === 'error') {
-            msg.error(data.message || '登录异常');
-            ws.close();
-          }
-        } catch { /* ignore */ }
-      };
-      ws.onerror = () => { msg.error('WebSocket 连接失败'); };
+      loginWs.execute(accountId, 'login');
     } catch (err: any) {
       msg.error(err.response?.data?.detail || '启动失败');
     } finally {
@@ -224,13 +211,14 @@ const AccountsPage: React.FC = () => {
     navigator.clipboard.writeText(parts.join('----')).then(() => msg.success('账号信息已复制'));
   };
 
-  const copyTOTPCode = async (accountId: number) => {
+  const copyTOTPCode = (secret: string) => {
     try {
-      const { data } = await getTOTP(accountId);
-      await navigator.clipboard.writeText(data.code);
-      msg.success(`2FA 验证码已复制: ${data.code}`);
-    } catch (error: any) {
-      msg.error(error.response?.data?.detail || '获取验证码失败');
+      const { code } = generateTOTP(secret);
+      navigator.clipboard.writeText(code).then(() => {
+        msg.success(`2FA 验证码已复制: ${code}`);
+      });
+    } catch {
+      msg.error('生成验证码失败');
     }
   };
 
@@ -398,7 +386,7 @@ const AccountsPage: React.FC = () => {
               <Button
                 type="text" size="small"
                 icon={<KeyOutlined style={{ color: '#52c41a' }} />}
-                onClick={() => copyTOTPCode(record.id)}
+                onClick={() => copyTOTPCode(record.totp_secret!)}
               />
             </Tooltip>
           )}

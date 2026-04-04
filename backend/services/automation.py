@@ -15,6 +15,7 @@ from typing import Optional, List, Callable
 
 from services.browser import browser_manager, login_sync, get_rapt_sync
 from services.family_api import FamilyAPI, NoInvitationError, TokenError, RPCError
+from core.constants import FAMILY_ROLE_ADMIN
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,11 @@ SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent / ".automation_logs"
 
 def _is_debug_mode() -> bool:
     try:
-        from models.database import SessionLocal
+        from models.database import get_db_session
         from models.orm import Config
-        db = SessionLocal()
-        try:
+        with get_db_session() as db:
             row = db.query(Config).filter(Config.key == "debug_mode").first()
             return row.value == "true" if row else False
-        finally:
-            db.close()
     except Exception:
         return False
 
@@ -413,7 +411,7 @@ def discover_family_group_sync(page, on_step=None) -> FamilyDiscoverResult:
             for m in members_info["members"]:
                 if m.get("pending"):
                     role_str = "pending"
-                elif m["role"] == 1:
+                elif m["role"] == FAMILY_ROLE_ADMIN:
                     role_str = "manager"
                 else:
                     role_str = "member"
@@ -475,7 +473,7 @@ def _discover_from_cookies(cookies: dict) -> FamilyDiscoverResult:
             for m in members_info["members"]:
                 if m.get("pending"):
                     role_str = "pending"
-                elif m["role"] == 1:
+                elif m["role"] == FAMILY_ROLE_ADMIN:
                     role_str = "manager"
                 else:
                     role_str = "member"
@@ -519,18 +517,9 @@ def _save_cookies_to_db(account_id: int, cookies: dict):
     """保存 cookies 到数据库"""
     import json as _json
     try:
-        from models.database import SessionLocal
-        from models.orm import Account
-        db = SessionLocal()
-        try:
-            acc = db.query(Account).get(account_id)
-            if acc:
-                acc.cookies_json = _json.dumps(cookies)
-                acc.updated_at = datetime.now(timezone.utc)
-                db.commit()
-                logger.info(f"[discover] cookies 已更新 → account #{account_id}")
-        finally:
-            db.close()
+        from models.database import update_account_fields
+        update_account_fields(account_id, cookies_json=_json.dumps(cookies))
+        logger.info(f"[discover] cookies 已更新 → account #{account_id}")
     except Exception as e:
         logger.warning(f"[discover] 更新 cookies 失败: {e}")
 
@@ -556,16 +545,13 @@ def _auto_login_and_get_cookies(
     if not already_running:
         # 启动浏览器 (强制 headless=False, Google 登录不支持无头模式)
         try:
-            from models.database import SessionLocal
+            from models.database import get_db_session
             from models.orm import BrowserProfile
-            db = SessionLocal()
-            try:
-                profile = db.query(BrowserProfile).get(browser_profile_id)
+            with get_db_session() as db:
+                profile = db.query(BrowserProfile).filter(BrowserProfile.id == browser_profile_id).first()
                 if not profile:
                     logger.warning(f"[auto-login] 找不到浏览器配置 profile_id={browser_profile_id}")
                     return None
-            finally:
-                db.close()
 
             # 同步环境中启动浏览器 (launch 是 async 方法)
             loop = None
@@ -733,84 +719,87 @@ def _get_profile_id_from_page(page) -> int:
 # 异步包装器
 # ============================================================
 
+async def _run_sync(fn, *args, **kwargs):
+    """Run a synchronous function in the default executor."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+
+
+def _get_page_or_fail(profile_id: int, result_cls=AutomationResult):
+    """Get page from browser_manager, or return a failure result."""
+    page = browser_manager.get_page(profile_id)
+    if not page:
+        if result_cls is AutomationResult:
+            return None, AutomationResult(success=False, message="浏览器未启动", step="init")
+        else:
+            return None, FamilyDiscoverResult(success=False, message="浏览器未启动")
+    return page, None
+
+
 async def run_auto_login(profile_id: int, email: str, password: str,
                          totp_secret: str = "", recovery_email: str = "",
                          verification_url: str = "", on_step=None) -> AutomationResult:
-    page = browser_manager.get_page(profile_id)
-    if not page:
-        return AutomationResult(success=False, message="浏览器未启动", step="init")
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, auto_login_sync, page, email, password, totp_secret,
-        recovery_email, verification_url, on_step
+    page, err = _get_page_or_fail(profile_id)
+    if err:
+        return err
+    return await _run_sync(
+        auto_login_sync, page, email, password, totp_secret,
+        recovery_email, verification_url, on_step,
     )
 
 
 async def run_create_family_group(profile_id: int, on_step=None) -> AutomationResult:
-    page = browser_manager.get_page(profile_id)
-    if not page:
-        return AutomationResult(success=False, message="浏览器未启动", step="init")
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, create_family_group_sync, page, on_step)
+    page, err = _get_page_or_fail(profile_id)
+    if err:
+        return err
+    return await _run_sync(create_family_group_sync, page, on_step)
 
 
 async def run_send_family_invite(profile_id: int, invite_email: str,
                                  on_step=None) -> AutomationResult:
-    page = browser_manager.get_page(profile_id)
-    if not page:
-        return AutomationResult(success=False, message="浏览器未启动", step="init")
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, send_family_invite_sync, page, invite_email, on_step
-    )
+    page, err = _get_page_or_fail(profile_id)
+    if err:
+        return err
+    return await _run_sync(send_family_invite_sync, page, invite_email, on_step)
 
 
 async def run_accept_family_invite(profile_id: int, on_step=None) -> AutomationResult:
-    page = browser_manager.get_page(profile_id)
-    if not page:
-        return AutomationResult(success=False, message="浏览器未启动", step="init")
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, accept_family_invite_sync, page, on_step)
+    page, err = _get_page_or_fail(profile_id)
+    if err:
+        return err
+    return await _run_sync(accept_family_invite_sync, page, on_step)
 
 
 async def run_remove_family_member(profile_id: int, member_email: str,
                                    password: str = "", totp_secret: str = "",
                                    on_step=None) -> AutomationResult:
-    page = browser_manager.get_page(profile_id)
-    if not page:
-        return AutomationResult(success=False, message="浏览器未启动", step="init")
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, remove_family_member_sync, page, member_email, password, totp_secret, on_step
+    page, err = _get_page_or_fail(profile_id)
+    if err:
+        return err
+    return await _run_sync(
+        remove_family_member_sync, page, member_email, password, totp_secret, on_step,
     )
 
 
 async def run_leave_family_group(profile_id: int, password: str = "",
                                  totp_secret: str = "", on_step=None) -> AutomationResult:
-    page = browser_manager.get_page(profile_id)
-    if not page:
-        return AutomationResult(success=False, message="浏览器未启动", step="init")
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, leave_family_group_sync, page, password, totp_secret, on_step
-    )
+    page, err = _get_page_or_fail(profile_id)
+    if err:
+        return err
+    return await _run_sync(leave_family_group_sync, page, password, totp_secret, on_step)
 
 
 async def run_discover_family_group(profile_id: int, on_step=None) -> FamilyDiscoverResult:
-    page = browser_manager.get_page(profile_id)
-    if not page:
-        return FamilyDiscoverResult(success=False, message="浏览器未启动")
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, discover_family_group_sync, page, on_step)
+    page, err = _get_page_or_fail(profile_id, result_cls=FamilyDiscoverResult)
+    if err:
+        return err
+    return await _run_sync(discover_family_group_sync, page, on_step)
 
 
 async def run_oauth(profile_id: int, on_step=None, password: str = "", totp_secret: str = "") -> AutomationResult:
     """在已登录浏览器中自动完成 OAuth 授权"""
-    page = browser_manager.get_page(profile_id)
-    if not page:
-        return AutomationResult(success=False, message="浏览器未启动", step="init")
+    page, err = _get_page_or_fail(profile_id)
+    if err:
+        return err
     from services.oauth import oauth_sync
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, oauth_sync, page, on_step, password, totp_secret
-    )
+    return await _run_sync(oauth_sync, page, on_step, password, totp_secret)

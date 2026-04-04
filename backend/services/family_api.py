@@ -23,14 +23,32 @@ from urllib.parse import urlencode
 
 import httpx
 
+from core.constants import (
+    FAMILY_BASE_URL as BASE_URL,
+    FAMILY_BATCHEXECUTE_URL as BATCHEXECUTE_URL,
+    FAMILY_ROLE_ADMIN as ROLE_ADMIN,
+    FAMILY_ROLE_MEMBER as ROLE_MEMBER,
+    FAMILY_ROLE_NAMES as ROLE_NAMES,
+    FAMILY_USER_AGENT,
+    FAMILY_HTTP_TIMEOUT,
+    FAMILY_DEFAULT_REQID,
+    RPC_QUERY_STATUS,
+    RPC_QUERY_MEMBERS,
+    RPC_CREATE_STEP1,
+    RPC_CREATE_STEP2,
+    RPC_CREATE_STEP3,
+    RPC_INVITE_INIT,
+    RPC_INVITE_SEND,
+    RPC_ACCEPT_INVITE,
+    RPC_CANCEL_INVITE,
+    RPC_REMOVE_MEMBER,
+    RPC_DELETE_FAMILY,
+    WIZ_TOKEN_AT,
+    WIZ_TOKEN_FSID,
+    WIZ_TOKEN_BL,
+)
+
 logger = logging.getLogger(__name__)
-
-BASE_URL = "https://myaccount.google.com"
-BATCHEXECUTE_URL = f"{BASE_URL}/_/AccountSettingsUi/data/batchexecute"
-
-ROLE_ADMIN = 1
-ROLE_MEMBER = 2
-ROLE_NAMES = {ROLE_ADMIN: "admin", ROLE_MEMBER: "member"}
 
 
 class TokenError(Exception):
@@ -141,9 +159,9 @@ def extract_tokens(html: str) -> dict[str, str]:
     """从页面 HTML 的 WIZ_global_data 中提取认证 token"""
     tokens: dict[str, str] = {}
     for key, pattern in {
-        "at": r'"SNlM0e":"([^"]+)"',
-        "f.sid": r'"FdrFJe":"([^"]+)"',
-        "bl": r'"cfb2h":"([^"]+)"',
+        "at": rf'"{WIZ_TOKEN_AT}":"([^"]+)"',
+        "f.sid": rf'"{WIZ_TOKEN_FSID}":"([^"]+)"',
+        "bl": rf'"{WIZ_TOKEN_BL}":"([^"]+)"',
     }.items():
         m = re.search(pattern, html)
         if m:
@@ -169,15 +187,11 @@ class FamilyAPI:
         self.client = httpx.Client(
             cookies=cookies,
             headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/131.0.0.0 Safari/537.36"
-                ),
+                "User-Agent": FAMILY_USER_AGENT,
                 "Accept-Language": "en-US,en;q=0.9",
             },
             follow_redirects=True,
-            timeout=30,
+            timeout=FAMILY_HTTP_TIMEOUT,
         )
         self._tokens: dict[str, str] = {}
         self.refresh_tokens()
@@ -211,7 +225,7 @@ class FamilyAPI:
             "soc-app": "1",
             "soc-platform": "1",
             "soc-device": "1",
-            "_reqid": "100001",
+            "_reqid": FAMILY_DEFAULT_REQID,
             "rt": "c",
         }
         if rapt:
@@ -243,7 +257,7 @@ class FamilyAPI:
 
     def query_status(self) -> dict:
         """查询家庭组状态 (DmVhMc)"""
-        data = self._rpc("DmVhMc", "[]")["parsed"]
+        data = self._rpc(RPC_QUERY_STATUS, "[]")["parsed"]
         if data is None:
             return {"has_family": False, "remaining_slots": None}
         return {
@@ -319,7 +333,7 @@ class FamilyAPI:
           - 已接受成员: len(m)=19, 无 m[2], 无 m[9]
           - 待接受成员: len(m)=10, m[2]=True, m[9]=[invite_id, null, email, ...]
         """
-        raw_result = self._rpc("V2esPe", "[]")
+        raw_result = self._rpc(RPC_QUERY_MEMBERS, "[]")
         data = raw_result["parsed"]
         no_family = {
             "has_family": False,
@@ -380,17 +394,17 @@ class FamilyAPI:
         """创建家庭组 (nKULBd → Wffnob → c5gch)"""
         path = "/family/createconfirmation"
 
-        self._rpc("nKULBd", "[]", path, seq="1")
+        self._rpc(RPC_CREATE_STEP1, "[]", path, seq="1")
 
-        r = self._rpc("Wffnob", '[[null,null,["v2",18,null,["googleaccount"]]]]', path)
+        r = self._rpc(RPC_CREATE_STEP2, '[[null,null,["v2",18,null,["googleaccount"]]]]', path)
         raw = r["raw"].replace('\\"', '"').replace("\\\\", "\\")
         m = re.search(r"AP[A-Za-z0-9+/=_-]{20,}", raw)
         if not m:
-            raise RPCError("Wffnob", r["status_code"], "无法提取加密 token")
+            raise RPCError(RPC_CREATE_STEP2, r["status_code"], "无法提取加密 token")
         token = m.group(0)
 
         payload = json.dumps([[None, None, ["v2", 18, None, ["googleaccount"]]], [token]])
-        self._rpc("c5gch", payload, path)
+        self._rpc(RPC_CREATE_STEP3, payload, path)
 
         return self.query_status()["has_family"]
 
@@ -398,13 +412,13 @@ class FamilyAPI:
         """发送家庭组邀请 (B3vhdd → xN05r)"""
         path = "/family/invitemembers"
 
-        self._rpc("B3vhdd", '[[null,null,["v2",18,null,["googleaccount"]]]]', path)
+        self._rpc(RPC_INVITE_INIT, '[[null,null,["v2",18,null,["googleaccount"]]]]', path)
 
         payload = json.dumps([
             [None, None, ["v2", 18, None, ["googleaccount"]]],
             [[None, [email], None, 3, None, None, None, None, None, 1, email]],
         ])
-        r = self._rpc("xN05r", payload, path)
+        r = self._rpc(RPC_INVITE_SEND, payload, path)
 
         invitation_id = None
         if r["parsed"] and isinstance(r["parsed"], list) and len(r["parsed"]) > 1:
@@ -444,7 +458,7 @@ class FamilyAPI:
             None, None, None,
             token,
         ])
-        r = self._rpc("SZ903d", payload, join_path)
+        r = self._rpc(RPC_ACCEPT_INVITE, payload, join_path)
 
         logger.debug(f"[accept_invite] SZ903d parsed={r['parsed']}")
 
@@ -478,7 +492,7 @@ class FamilyAPI:
             [None, None, ["v2", 18, None, ["googleaccount"]]],
             invitation_id,
         ])
-        r = self._rpc("fijTGe", payload, path)
+        r = self._rpc(RPC_CANCEL_INVITE, payload, path)
         ok = r["status_code"] == 200
         logger.info(f"[cancel_invite] invitation_id={invitation_id}, HTTP={r['status_code']}, parsed={r['parsed']}")
         return ok
@@ -489,7 +503,7 @@ class FamilyAPI:
             [None, None, ["v2", 18, None, ["googleaccount"]]],
             member_user_id,
         ])
-        r = self._rpc("Csu7b", payload, f"/family/remove/g/{member_user_id}", rapt=rapt)
+        r = self._rpc(RPC_REMOVE_MEMBER, payload, f"/family/remove/g/{member_user_id}", rapt=rapt)
         return r["status_code"] == 200
 
     def leave_family(self, rapt: str) -> bool:
@@ -498,12 +512,12 @@ class FamilyAPI:
             [None, None, ["v2", 18, None, ["googleaccount"]]],
             "me",
         ])
-        r = self._rpc("Csu7b", payload, "/family/leave", rapt=rapt)
+        r = self._rpc(RPC_REMOVE_MEMBER, payload, "/family/leave", rapt=rapt)
         return r["status_code"] == 200
 
     def delete_family(self, rapt: str) -> bool:
         """删除家庭组 (hQih3e) — 管理员操作"""
-        r = self._rpc("hQih3e", "[]", "/family/delete", rapt=rapt)
+        r = self._rpc(RPC_DELETE_FAMILY, "[]", "/family/delete", rapt=rapt)
         return r["status_code"] == 200
 
     # ── 生命周期 ──

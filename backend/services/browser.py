@@ -19,6 +19,18 @@ from typing import Dict, List, Optional
 import pyotp
 from DrissionPage import WebPage, ChromiumOptions
 
+from core.constants import (
+    BROWSER_PORT_MIN,
+    BROWSER_PORT_MAX,
+    SEL_EMAIL_INPUT,
+    SEL_EMAIL_NEXT,
+    SEL_SKIP_LATER_CN,
+    SEL_SKIP_NOT_NOW,
+    SEL_SKIP,
+    SEL_SKIP_LATER_CN2,
+)
+from services.auth_steps import enter_password, enter_totp
+
 logger = logging.getLogger(__name__)
 
 # 浏览器用户数据根目录
@@ -83,14 +95,11 @@ class BrowserManager:
     @staticmethod
     def _is_headless_mode() -> bool:
         try:
-            from models.database import SessionLocal
+            from models.database import get_db_session
             from models.orm import Config
-            db = SessionLocal()
-            try:
+            with get_db_session() as db:
                 row = db.query(Config).filter(Config.key == "headless_mode").first()
                 return row.value == "true" if row else False
-            finally:
-                db.close()
         except Exception:
             return False
 
@@ -116,7 +125,7 @@ class BrowserManager:
         co = ChromiumOptions()
         # 每个实例使用独立随机端口，避免接管已有浏览器
         import random
-        port = random.randint(9600, 59600)
+        port = random.randint(BROWSER_PORT_MIN, BROWSER_PORT_MAX)
         co.set_address(f"127.0.0.1:{port}")
         co.set_argument("--lang", "en-US")
         co.set_user_data_path(str(data_dir))
@@ -274,49 +283,32 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         return True
 
     # 邮箱
-    email_input = page.ele("#identifierId", timeout=10)
+    email_input = page.ele(SEL_EMAIL_INPUT, timeout=10)
     if not email_input:
         use_another = page.ele("text:Use another account", timeout=3)
         if use_another:
             use_another.click()
             time.sleep(2)
-            email_input = page.ele("#identifierId", timeout=10)
+            email_input = page.ele(SEL_EMAIL_INPUT, timeout=10)
     if not email_input:
         logger.error(f"找不到邮箱输入框, URL: {page.url}")
         return False
 
     email_input.input(email)
     time.sleep(0.5)
-    page.ele("#identifierNext", timeout=5).click()
+    page.ele(SEL_EMAIL_NEXT, timeout=5).click()
     time.sleep(3)
 
     # 密码
     time.sleep(2)
-    pwd_input = page.ele("@name=Passwd", timeout=15)
-    if not pwd_input:
+    if not enter_password(page, password, timeout=15):
         logger.error("找不到密码输入框")
         return False
-    pwd_input.input(password)
-    time.sleep(0.5)
-    page.ele("#passwordNext", timeout=5).click()
-    time.sleep(3)
+    time.sleep(0)  # enter_password already sleeps 3s after click
 
     # TOTP
     if "challenge" in page.url and totp_secret:
-        code = pyotp.TOTP(totp_secret.replace(' ', '')).now()
-        if "challenge/selection" in page.url:
-            opt = page.ele("text:Authenticator", timeout=3)
-            if opt:
-                opt.click()
-                time.sleep(2)
-        totp_input = page.ele("#totpPin", timeout=10) or page.ele('input[type="tel"]', timeout=5)
-        if totp_input:
-            totp_input.input(code)
-            time.sleep(0.5)
-            btn = page.ele("#totpNext", timeout=5) or page.ele("text:Next", timeout=3)
-            if btn:
-                btn.click()
-                time.sleep(3)
+        enter_totp(page, totp_secret, timeout=10)
 
     time.sleep(2)
 
@@ -326,10 +318,10 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         if "speedbump" in url or "passkeyenrollment" in url or "signinoptions" in url:
             # 点击 "以后再说" / "Not now" / "Skip" 跳过
             skip_btn = (
-                page.ele("text:以后再说", timeout=2)
-                or page.ele("text:Not now", timeout=2)
-                or page.ele("text:Skip", timeout=2)
-                or page.ele("text:稍后再说", timeout=1)
+                page.ele(SEL_SKIP_LATER_CN, timeout=2)
+                or page.ele(SEL_SKIP_NOT_NOW, timeout=2)
+                or page.ele(SEL_SKIP, timeout=2)
+                or page.ele(SEL_SKIP_LATER_CN2, timeout=1)
             )
             if skip_btn:
                 skip_btn.click()
@@ -373,31 +365,11 @@ def handle_reauth_sync(page, password: str, totp_secret: str = "") -> Optional[s
     logger.info("密码重验证...")
 
     # 密码
-    pwd_input = page.ele("@name=Passwd", timeout=5) or page.ele('input[type="password"]', timeout=5)
-    if pwd_input:
-        pwd_input.input(password)
-        time.sleep(0.5)
-        next_btn = page.ele("#passwordNext", timeout=3) or page.ele("text:Next", timeout=3)
-        if next_btn:
-            next_btn.click()
-            time.sleep(3)
+    enter_password(page, password, timeout=5)
 
     # TOTP
     if "challenge" in page.url and totp_secret:
-        code = pyotp.TOTP(totp_secret.replace(' ', '')).now()
-        if "challenge/selection" in page.url:
-            opt = page.ele("text:Authenticator", timeout=3)
-            if opt:
-                opt.click()
-                time.sleep(2)
-        totp_input = page.ele("#totpPin", timeout=5) or page.ele('input[type="tel"]', timeout=5)
-        if totp_input:
-            totp_input.input(code)
-            time.sleep(0.5)
-            btn = page.ele("#totpNext", timeout=3) or page.ele("text:Next", timeout=3)
-            if btn:
-                btn.click()
-                time.sleep(3)
+        enter_totp(page, totp_secret, timeout=5)
 
     # 提取 rapt
     import re

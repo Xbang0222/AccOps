@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
   Card,
@@ -45,9 +45,9 @@ import {
   LinkOutlined,
   PhoneOutlined,
 } from '@ant-design/icons';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   getGroup,
-  getTOTP,
   launchBrowser,
   stopBrowser,
   getBrowserProfiles,
@@ -62,21 +62,11 @@ import {
 } from '@/api';
 import type { Account, Group } from '@/types';
 import { maskEmail } from '@/utils/mask';
+import { generateTOTP } from '@/utils/totp';
+import { useAutomationWs } from '@/hooks/useAutomationWs';
+import type { StepMsg } from '@/hooks/useAutomationWs';
 
 const { Text, Title } = Typography;
-
-const WS_URL = 'ws://localhost:8000/api/v1/ws/automation';
-
-/** WebSocket 步骤消息 */
-interface StepMsg {
-  type: 'step' | 'result' | 'error';
-  step?: number;
-  name?: string;
-  status?: string;
-  message?: string;
-  success?: boolean;
-  duration_ms?: number;
-}
 
 /** 每个账号独立的操作状态 */
 interface AccountOpState {
@@ -128,12 +118,10 @@ const getVisibleOps = (account: Account) => {
   });
 };
 
-interface GroupDetailProps {
-  groupId: number;
-  onBack: () => void;
-}
-
-const GroupDetail: React.FC<GroupDetailProps> = ({ groupId, onBack }) => {
+const GroupDetail: React.FC = () => {
+  const { groupId: groupIdParam } = useParams<{ groupId: string }>();
+  const navigate = useNavigate();
+  const groupId = Number(groupIdParam);
   const { message: msg } = App.useApp();
   const [group, setGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(false);
@@ -146,6 +134,70 @@ const GroupDetail: React.FC<GroupDetailProps> = ({ groupId, onBack }) => {
 
   // 每个账号独立的操作状态
   const [opStates, setOpStates] = useState<Record<number, AccountOpState>>({});
+
+  // 当前 WebSocket 操作的账号 ID
+  const wsAccountIdRef = useRef<number | null>(null);
+
+  const automation = useAutomationWs({
+    onSuccess: (_opKey, message) => {
+      const accountId = wsAccountIdRef.current;
+      if (accountId !== null) {
+        setOpStates(prev => ({
+          ...prev,
+          [accountId]: {
+            ...prev[accountId],
+            runningOpKey: null,
+            resultMsg: message,
+            resultSuccess: true,
+          }
+        }));
+      }
+      msg.success(message);
+      loadGroup();
+    },
+    onFail: (_opKey, message) => {
+      const accountId = wsAccountIdRef.current;
+      if (accountId !== null) {
+        setOpStates(prev => ({
+          ...prev,
+          [accountId]: {
+            ...prev[accountId],
+            runningOpKey: null,
+            resultMsg: message,
+            resultSuccess: false,
+          }
+        }));
+      }
+      msg.warning(message);
+    },
+    onError: (_opKey, message) => {
+      const accountId = wsAccountIdRef.current;
+      if (accountId !== null) {
+        setOpStates(prev => ({
+          ...prev,
+          [accountId]: {
+            ...prev[accountId],
+            runningOpKey: null,
+            resultMsg: message,
+            resultSuccess: false,
+          }
+        }));
+      }
+      msg.error(message);
+    },
+  });
+
+  // 同步 hook 的 steps 到当前活跃账号的 opStates
+  useEffect(() => {
+    const accountId = wsAccountIdRef.current;
+    if (accountId !== null && automation.runningOp !== null) {
+      setOpStates(prev => {
+        const s = prev[accountId];
+        if (!s) return prev;
+        return { ...prev, [accountId]: { ...s, steps: automation.steps } };
+      });
+    }
+  }, [automation.steps, automation.runningOp]);
 
   // 输入字段弹窗
   const [activeOp, setActiveOp] = useState<OpDef | null>(null);
@@ -271,88 +323,19 @@ const GroupDetail: React.FC<GroupDetailProps> = ({ groupId, onBack }) => {
   const executeViaWs = useCallback(
     (accountId: number, action: string, extra: Record<string, string> = {}, opKey?: string) => {
       const trackKey = opKey || action;
-      const token = localStorage.getItem('token') || '';
-      const ws = new WebSocket(`${WS_URL}?token=${token}`);
 
       // 自动选中该账号的日志面板
       setSelectedAccountId(accountId);
+      wsAccountIdRef.current = accountId;
 
       setOpStates(prev => ({
         ...prev,
         [accountId]: { runningOpKey: trackKey, steps: [], resultMsg: '', resultSuccess: null }
       }));
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ action, account_id: accountId, ...extra }));
-      };
-
-      ws.onmessage = (e) => {
-        try {
-          const data: StepMsg = JSON.parse(e.data);
-          if (data.type === 'step') {
-            setOpStates(prev => {
-              const s = prev[accountId];
-              if (!s) return prev;
-              const newSteps = (() => {
-                if (data.status === 'running') return [...s.steps, data];
-                const updated = [...s.steps];
-                let idx = -1;
-                for (let j = updated.length - 1; j >= 0; j--) {
-                  if (updated[j].step === data.step) { idx = j; break; }
-                }
-                if (idx >= 0) updated[idx] = data;
-                else updated.push(data);
-                return updated;
-              })();
-              return { ...prev, [accountId]: { ...s, steps: newSteps } };
-            });
-          } else if (data.type === 'result') {
-            setOpStates(prev => ({
-              ...prev,
-              [accountId]: {
-                ...prev[accountId],
-                runningOpKey: null,
-                resultMsg: data.message || '',
-                resultSuccess: data.success ?? false,
-              }
-            }));
-            if (data.success) {
-              msg.success(data.message || '操作成功');
-              loadGroup();
-            } else {
-              msg.warning(data.message || '操作失败');
-            }
-            ws.close();
-          } else if (data.type === 'error') {
-            setOpStates(prev => ({
-              ...prev,
-              [accountId]: {
-                ...prev[accountId],
-                runningOpKey: null,
-                resultMsg: data.message || '操作异常',
-                resultSuccess: false,
-              }
-            }));
-            msg.error(data.message || '操作异常');
-            ws.close();
-          }
-        } catch { /* ignore */ }
-      };
-
-      ws.onerror = () => {
-        setOpStates(prev => ({
-          ...prev,
-          [accountId]: {
-            ...prev[accountId],
-            runningOpKey: null,
-            resultMsg: 'WebSocket 连接失败',
-            resultSuccess: false,
-          }
-        }));
-        msg.error('WebSocket 连接失败');
-      };
+      automation.execute(accountId, action, extra, opKey);
     },
-    [msg, groupId],
+    [automation.execute],
   );
 
   const handleOpClick = (accountId: number, op: OpDef) => {
@@ -471,13 +454,14 @@ const GroupDetail: React.FC<GroupDetailProps> = ({ groupId, onBack }) => {
     navigator.clipboard.writeText(text).then(() => msg.success(`${label}已复制`));
   };
 
-  const copyTOTPCode = async (accountId: number) => {
+  const copyTOTPCode = (secret: string) => {
     try {
-      const { data } = await getTOTP(accountId);
-      await navigator.clipboard.writeText(data.code);
-      msg.success(`2FA 验证码已复制: ${data.code}`);
-    } catch (error: any) {
-      msg.error(error.response?.data?.detail || '获取验证码失败');
+      const { code } = generateTOTP(secret);
+      navigator.clipboard.writeText(code).then(() => {
+        msg.success(`2FA 验证码已复制: ${code}`);
+      });
+    } catch {
+      msg.error('生成验证码失败');
     }
   };
 
@@ -557,7 +541,7 @@ const GroupDetail: React.FC<GroupDetailProps> = ({ groupId, onBack }) => {
     return (
       <Flex vertical align="center" justify="center" style={{ height: '100%' }}>
         <Empty description="分组不存在" />
-        <Button type="link" onClick={onBack}>返回列表</Button>
+        <Button type="link" onClick={() => navigate('/groups')}>返回列表</Button>
       </Flex>
     );
   }
@@ -697,7 +681,7 @@ const GroupDetail: React.FC<GroupDetailProps> = ({ groupId, onBack }) => {
                     style={{ padding: '0 4px' }} />
                 </Tooltip>
                 {record.totp_secret && (
-                  <Tooltip title="复制 2FA"><Button type="text" size="small" icon={<CopyOutlined style={{ color: '#52c41a' }} />} onClick={() => copyTOTPCode(record.id)} style={{ padding: '0 4px' }} /></Tooltip>
+                  <Tooltip title="复制 2FA"><Button type="text" size="small" icon={<CopyOutlined style={{ color: '#52c41a' }} />} onClick={() => copyTOTPCode(record.totp_secret!)} style={{ padding: '0 4px' }} /></Tooltip>
                 )}
                 {record.password && (
                   <Tooltip title="复制密码"><Button type="text" size="small" icon={<CopyOutlined style={{ color: '#faad14' }} />} onClick={() => copyToClipboard(record.password, '密码')} style={{ padding: '0 4px' }} /></Tooltip>
@@ -841,7 +825,7 @@ const GroupDetail: React.FC<GroupDetailProps> = ({ groupId, onBack }) => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 顶部: 返回 + 分组信息 */}
       <Flex align="center" gap={12} style={{ marginBottom: 12, flexShrink: 0 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} />
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/groups')} />
         <TeamOutlined style={{ color: '#722ed1', fontSize: 20 }} />
         <Text strong style={{ fontSize: 16 }}>{group.name}</Text>
         <Tag color="default" style={{ fontSize: 12 }}>

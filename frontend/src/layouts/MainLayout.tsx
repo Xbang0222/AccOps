@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Layout, Menu, Button, Typography, Tooltip } from 'antd';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   SafetyCertificateOutlined,
   DashboardOutlined,
@@ -9,11 +10,6 @@ import {
   SettingOutlined,
   PhoneOutlined,
 } from '@ant-design/icons';
-import DashboardPage from '@/pages/DashboardPage';
-import AccountsPage from '@/pages/AccountsPage';
-import GroupManage from '@/pages/GroupManage';
-import SettingsPage from '@/pages/SettingsPage';
-import SmsPage from '@/pages/SmsPage';
 import './MainLayout.css';
 
 const { Header, Sider, Content } = Layout;
@@ -59,9 +55,31 @@ const pageTitles: Record<string, string> = {
   settings: '系统设置',
 };
 
+const menuKeyToPath: Record<string, string> = {
+  dashboard: '/dashboard',
+  accounts: '/accounts',
+  groups: '/groups',
+  sms: '/sms',
+  settings: '/settings',
+};
+
 const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [currentMenu, setCurrentMenu] = useState('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Derive selected menu key from current path
+  // e.g. /groups/123 → 'groups', /dashboard → 'dashboard'
+  const pathSegment = location.pathname.split('/')[1] || 'dashboard';
+  const selectedKey = Object.keys(menuKeyToPath).includes(pathSegment) ? pathSegment : 'dashboard';
+  const pageTitle = pageTitles[selectedKey] || '仪表盘';
+
+  const handleMenuClick = ({ key }: { key: string }) => {
+    const path = menuKeyToPath[key];
+    if (path) {
+      navigate(path);
+    }
+  };
 
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
@@ -91,8 +109,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
 
         <Menu
           mode="inline"
-          selectedKeys={[currentMenu]}
-          onClick={({ key }) => setCurrentMenu(key)}
+          selectedKeys={[selectedKey]}
+          onClick={handleMenuClick}
           items={menuItems}
           style={{ border: 'none', marginTop: 8 }}
         />
@@ -102,7 +120,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
         <Header className="main-header">
           <div className="header-left">
             <Text strong style={{ fontSize: 16 }}>
-              {pageTitles[currentMenu]}
+              {pageTitle}
             </Text>
           </div>
           <div className="header-right">
@@ -121,11 +139,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
 
         <Content className="content-wrapper">
           <div className="site-layout-content">
-            {currentMenu === 'dashboard' && <DashboardPage />}
-            {currentMenu === 'accounts' && <AccountsPage />}
-            {currentMenu === 'groups' && <GroupManage />}
-            {currentMenu === 'sms' && <SmsPage />}
-            {currentMenu === 'settings' && <SettingsPage />}
+            <Outlet />
           </div>
         </Content>
       </Layout>

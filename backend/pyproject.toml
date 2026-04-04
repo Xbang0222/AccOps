@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "bcrypt>=5.0.0",
     "websockets>=16.0",
+    "alembic>=1.18.4",
 ]
 
 [[tool.uv.index]]

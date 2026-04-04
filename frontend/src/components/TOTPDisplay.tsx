@@ -1,33 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Typography, Progress, message, Tooltip, Flex } from 'antd';
-import { getTOTP } from '@/api';
+import { generateTOTP } from '@/utils/totp';
 
 const { Text } = Typography;
 
 interface TOTPDisplayProps {
-  accountId: number;
+  secret: string;
 }
 
-const TOTPDisplay: React.FC<TOTPDisplayProps> = ({ accountId }) => {
+const TOTPDisplay: React.FC<TOTPDisplayProps> = ({ secret }) => {
   const [totp, setTotp] = useState({ code: '------', remaining: 30, formatted: '--- ---' });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    loadTOTP();
-    intervalRef.current = setInterval(loadTOTP, 1000);
+    const update = () => setTotp(generateTOTP(secret));
+    update();
+    intervalRef.current = setInterval(update, 1000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [accountId]);
-
-  const loadTOTP = async () => {
-    try {
-      const { data } = await getTOTP(accountId);
-      setTotp(data);
-    } catch {
-      // silently ignore
-    }
-  };
+  }, [secret]);
 
   const copyCode = () => {
     navigator.clipboard.writeText(totp.code).then(() => {
