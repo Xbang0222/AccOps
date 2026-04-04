@@ -128,6 +128,18 @@ pnpm dev
 
 访问：http://localhost:5173
 
+开发模式下前端默认通过 Vite 代理把 `/api` 请求转发到后端，不需要在 `.env` 里再写死 `VITE_API_BASE_URL` 或 `VITE_WS_BASE_URL`。
+
+如果后端端口变了，只需要改：
+
+```bash
+cd frontend
+export VITE_DEV_PROXY_TARGET="http://127.0.0.1:9000"
+pnpm dev
+```
+
+如果前端访问地址也变了，例如改成 `http://localhost:3000` 或局域网域名，需要同步调整后端 `GAM_CORS_ORIGINS`。
+
 ### Production Build
 
 ```bash
@@ -145,9 +157,35 @@ pnpm build
 | `GAM_DATABASE_URL` | `postgresql://root:123456@127.0.0.1:5432/gam` | PostgreSQL 连接串 |
 | `GAM_SECRET_KEY` | 随机生成 | JWT 签名密钥 |
 | `GAM_TOKEN_EXPIRE_MINUTES` | `480` | Token 有效期（分钟） |
-| `GAM_CORS_ORIGINS` | `http://localhost:5173` | CORS 允许源，逗号分隔 |
+| `GAM_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | CORS 允许源，逗号分隔 |
 | `GAM_HOST` | `127.0.0.1` | 监听地址 |
 | `GAM_PORT` | `8000` | 监听端口 |
+| `VITE_DEV_PROXY_TARGET` | `http://127.0.0.1:8000` | 前端开发代理目标，仅 Vite 开发模式使用 |
+
+### Development Connectivity
+
+为避免本地开发时反复出现“无法连接服务器”，当前约定如下：
+
+- 前端默认走同源 `/api`，由 Vite 开发服务器代理到后端。
+- WebSocket 默认跟随当前页面来源生成 `ws://` 或 `wss://` 地址，不再写死 `127.0.0.1:8000`。
+- 后端默认同时允许 `http://localhost:5173` 和 `http://127.0.0.1:5173` 两种本地来源。
+
+因此以后换端口时，通常只需要改配置，不需要改代码：
+
+```bash
+# 后端
+export GAM_PORT="9000"
+export GAM_CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
+
+# 前端
+export VITE_DEV_PROXY_TARGET="http://127.0.0.1:9000"
+```
+
+如果前端本身也换端口，例如 `3000`，则把 `GAM_CORS_ORIGINS` 一并改成对应来源：
+
+```bash
+export GAM_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+```
 
 ### Runtime Settings
 

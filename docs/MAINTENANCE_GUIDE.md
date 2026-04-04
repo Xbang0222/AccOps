@@ -34,6 +34,12 @@ pnpm install
 pnpm dev
 ```
 
+说明：
+
+- 开发环境默认通过 Vite 代理访问后端，请优先保留同源 `/api` 方案。
+- 不要重新把 `VITE_API_BASE_URL` 或 `VITE_WS_BASE_URL` 写死成某个固定端口，除非有明确部署需求。
+- 后端端口变更时，优先改 `VITE_DEV_PROXY_TARGET`，而不是修改前端业务代码。
+
 验证：
 
 ```bash
@@ -42,6 +48,8 @@ pnpm lint
 pnpm test:run
 pnpm build
 ```
+
+如果前端访问地址变了，还需要同步检查后端 `GAM_CORS_ORIGINS` 是否包含当前来源。
 
 ---
 
@@ -129,6 +137,13 @@ pnpm build
 1. 当前页面对应的 controller
 2. 对应 feature 的 utils
 3. API 请求模块
+
+如果登录页报“无法连接服务器”，优先检查这几项：
+
+1. 前端开发服务器是否正常启动
+2. `VITE_DEV_PROXY_TARGET` 是否指向正确的后端地址
+3. 后端 `GAM_CORS_ORIGINS` 是否包含当前前端来源
+4. 是否有人把 `frontend/src/config.ts` 改回了写死地址
 
 ### 3.2 WebSocket 自动化出错
 
