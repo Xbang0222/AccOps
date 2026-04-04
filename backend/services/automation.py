@@ -847,3 +847,21 @@ async def run_oauth(profile_id: int, on_step=None, password: str = "", totp_secr
     from services.oauth import oauth_sync
     return await _run_sync(oauth_sync, page, on_step, password, totp_secret,
                            cancel_token=cancel_token)
+
+
+async def run_phone_verify(profile_id: int, validation_url: str, on_step=None,
+                           cancel_token=None) -> AutomationResult:
+    """在已登录浏览器中自动完成手机号验证。"""
+    page, err = _get_page_or_fail(profile_id)
+    if err:
+        return err
+    from services.oauth import auto_phone_verify_sync
+    result = await _run_sync(
+        auto_phone_verify_sync, page, validation_url, on_step, cancel_token=cancel_token,
+    )
+    return AutomationResult(
+        success=result.get("success", False),
+        message=result.get("message", ""),
+        step="phone_verify",
+        extra=result,
+    )

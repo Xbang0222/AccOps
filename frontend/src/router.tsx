@@ -1,25 +1,42 @@
+import { Flex, Spin } from 'antd';
+import { Suspense, lazy, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import MainLayout from '@/layouts/MainLayout';
-import DashboardPage from '@/pages/DashboardPage';
-import AccountsPage from '@/pages/AccountsPage';
-import GroupManagePage from '@/pages/GroupManagePage';
-import GroupDetailPage from '@/pages/GroupDetailPage';
-import SmsPage from '@/pages/SmsPage';
-import SettingsPage from '@/pages/SettingsPage';
+
+const MainLayout = lazy(() => import('@/layouts/MainLayout'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const AccountsPage = lazy(() => import('@/pages/AccountsPage'));
+const GroupManagePage = lazy(() => import('@/pages/GroupManagePage'));
+const GroupDetailPage = lazy(() => import('@/pages/GroupDetailPage'));
+const SmsPage = lazy(() => import('@/pages/SmsPage'));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+
+function renderLazy(element: ReactNode) {
+  return (
+    <Suspense
+      fallback={(
+        <Flex justify="center" align="center" style={{ minHeight: '50vh' }}>
+          <Spin size="large" />
+        </Flex>
+      )}
+    >
+      {element}
+    </Suspense>
+  );
+}
 
 export const createRouter = (onLogout: () => void) =>
   createBrowserRouter([
     {
       path: '/',
-      element: <MainLayout onLogout={onLogout} />,
+      element: renderLazy(<MainLayout onLogout={onLogout} />),
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
-        { path: 'dashboard', element: <DashboardPage /> },
-        { path: 'accounts', element: <AccountsPage /> },
-        { path: 'groups', element: <GroupManagePage /> },
-        { path: 'groups/:groupId', element: <GroupDetailPage /> },
-        { path: 'sms', element: <SmsPage /> },
-        { path: 'settings', element: <SettingsPage /> },
+        { path: 'dashboard', element: renderLazy(<DashboardPage />) },
+        { path: 'accounts', element: renderLazy(<AccountsPage />) },
+        { path: 'groups', element: renderLazy(<GroupManagePage />) },
+        { path: 'groups/:groupId', element: renderLazy(<GroupDetailPage />) },
+        { path: 'sms', element: renderLazy(<SmsPage />) },
+        { path: 'settings', element: renderLazy(<SettingsPage />) },
         { path: '*', element: <Navigate to="/dashboard" replace /> },
       ],
     },
