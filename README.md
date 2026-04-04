@@ -1,6 +1,12 @@
 # AccOps
 
-*Google 账号批量管理与家庭组自动化操作平台*
+<p align="center">
+  <img src="frontend/public/logo-512.png" alt="AccOps" width="120" />
+</p>
+
+<p align="center">
+  <em>Google 账号批量管理与家庭组自动化操作平台</em>
+</p>
 
 ---
 
@@ -27,13 +33,15 @@ AccOps 是一个自托管的 Google 账号批量管理系统，将**浏览器自
 - **接码管理** — 多提供商支持（HeroSMS / SMS-Bus），国家/服务/价格查询，完整购买生命周期
 - **订阅检测** — 识别 Google One AI Ultra 订阅状态及到期日，主号状态自动传播给组内子号
 - **实时反馈** — WebSocket 推送自动化步骤进度，调试模式下每步截图 + 保存页面源码
+- **暗黑模式** — 三段式主题切换（跟随系统 / 浅色 / 深色），全组件适配 Ant Design design tokens
+- **可拖拽列宽** — 账号表格支持 Excel 风格的列宽拖拽调整
 
 ## Tech Stack
 
 | 层 | 技术 |
 |---|---|
 | 后端 | Python 3.11+ · FastAPI · SQLAlchemy · PostgreSQL |
-| 前端 | React 19 · TypeScript · Ant Design 6 · Vite |
+| 前端 | React 19 · TypeScript · Ant Design 6 · Vite 7 |
 | 浏览器自动化 | DrissionPage |
 | HTTP RPC | httpx · Google `batchexecute` |
 | 安全 | JWT · bcrypt · AES-256-GCM |
@@ -100,6 +108,9 @@ uv sync
 # 可选：配置环境变量（均有默认值）
 export GAM_DATABASE_URL="postgresql://user:pass@127.0.0.1:5432/gam"
 export GAM_SECRET_KEY="your-secret-key"
+
+# 启动前杀残留进程（--reload 模式必须）
+lsof -ti:8000 | xargs kill -9 2>/dev/null
 
 # 启动
 uv run python run.py
@@ -233,14 +244,15 @@ backend/
     └── crypto.py               # AES-256-GCM 加密
 
 frontend/src/
-├── App.tsx                     # 应用入口
+├── App.tsx                     # 应用入口 (ThemeProvider 包装)
 ├── main.tsx                    # React 入口
 ├── api/                        # Axios 客户端 + API 封装
-├── features/                   # 领域逻辑（automation / browser / group-detail / sms 等）
+├── features/                   # 领域逻辑 (automation / browser / group-detail / sms)
 ├── pages/                      # 页面组件
-├── components/                 # 通用组件
-├── layouts/                    # 布局组件
-├── theme/                      # 主题配置
+├── components/                 # 通用组件 (ResizableTitle 等)
+├── layouts/                    # 布局组件 (侧边栏 + 主题切换)
+├── hooks/                      # 自定义 Hooks (useThemeMode / useAutomationWs)
+├── theme/                      # Ant Design 主题配置 (浅色/深色双主题)
 ├── types/                      # TypeScript 类型
 └── utils/                      # 工具函数
 ```

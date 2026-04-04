@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, Typography, message, Spin } from 'antd';
-import { LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { LockOutlined } from '@ant-design/icons';
 import { checkSetup, setupPassword, login } from '@/api';
 import { getErrorMessage } from '@/utils/http';
 import './LoginPage.css';
@@ -67,7 +67,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       <div className="login-box">
         <div className="logo-container">
           <div className="logo-icon-wrapper">
-            <SafetyCertificateOutlined style={{ fontSize: 40, color: '#fff' }} />
+            <img src="/logo-512.png" alt="AccOps" style={{ width: 80, height: 80 }} />
           </div>
           <Title level={3} style={{ marginBottom: 4, fontWeight: 600 }}>
             {hasPassword ? '欢迎回来' : '初始化设置'}

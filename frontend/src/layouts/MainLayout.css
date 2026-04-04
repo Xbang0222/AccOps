@@ -9,14 +9,10 @@
   user-select: none;
 }
 
-.logo-header .logo-dot {
+.logo-header .logo-icon {
   width: 32px;
   height: 32px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #4285f4 0%, #667eea 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 8px;
   flex-shrink: 0;
 }
 

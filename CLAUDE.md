@@ -61,7 +61,10 @@ frontend/src/
 │   └── sms.ts                  # 接码管理 API
 ├── features/
 │   ├── automation/             # 自动化共享元数据与展示映射
-│   └── browser/                # 浏览器配置默认值等领域逻辑
+│   ├── browser/                # 浏览器配置默认值等领域逻辑
+│   ├── group-detail/           # 分组详情组件 (账号卡片 + 日志面板)
+│   ├── sms/                    # 接码管理组件 (国家列表 + 历史 + 配置弹窗)
+│   └── accountsTableColumns.tsx # 账号表格列定义 (可拖拽列宽)
 ├── pages/
 │   ├── LoginPage.tsx            # 登录页
 │   ├── DashboardPage.tsx        # 仪表盘
@@ -74,16 +77,20 @@ frontend/src/
 │   ├── AccountModal.tsx         # 账号编辑弹窗
 │   ├── BrowserProfileModal.tsx  # 浏览器配置弹窗
 │   ├── OperationPanel.tsx       # 自动化操作面板 (WebSocket 步骤追踪)
+│   ├── ResizableTitle.tsx       # 可拖拽列宽表头组件 (react-resizable)
 │   └── TOTPDisplay.tsx          # TOTP 验证码显示 + 倒计时
 ├── layouts/
-│   └── MainLayout.tsx           # 主布局 (侧边栏 + 内容区)
+│   └── MainLayout.tsx           # 主布局 (侧边栏 + 内容区 + 主题切换)
+├── theme/
+│   └── index.ts                 # Ant Design 主题配置 (浅色/深色 双主题)
 ├── types/
 │   └── index.ts                 # TypeScript 类型定义
 ├── utils/
 │   ├── http.ts                  # HTTP 错误消息提取
 │   └── mask.ts                  # 邮箱脱敏工具
 └── hooks/
-    └── useAutomationWs.ts       # 自动化 WebSocket hook
+    ├── useAutomationWs.ts       # 自动化 WebSocket hook
+    └── useThemeMode.tsx         # 主题模式 Context (system/light/dark)
 ```
 
 ## 环境变量

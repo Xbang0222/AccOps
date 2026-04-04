@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Layout, Menu, Button, Typography, Tooltip, Segmented } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  SafetyCertificateOutlined,
   DashboardOutlined,
   IdcardOutlined,
   TeamOutlined,
@@ -87,9 +86,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
         }}
       >
         <div className="logo-header" style={{ borderBottomColor: borderColor }}>
-          <div className="logo-dot">
-            <SafetyCertificateOutlined style={{ fontSize: 16, color: '#fff' }} />
-          </div>
+          <img src="/logo-64.png" alt="AccOps" className="logo-icon" />
           {!collapsed && (
             <Text strong style={{ fontSize: 15, whiteSpace: 'nowrap' }}>
               账号管理
