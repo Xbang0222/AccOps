@@ -73,7 +73,10 @@ const AccountsPage: React.FC = () => {
   const [profileMap, setProfileMap] = useState<Record<number, number>>({});
 
   const loginWs = useAutomationWs({
-    onSuccess: (_opKey, message) => { msg.success(message); },
+    onSuccess: (_opKey, message) => {
+      msg.success(message);
+      void loadAccounts();
+    },
     onFail: (_opKey, message) => { msg.warning(message); },
     onError: (_opKey, message) => { msg.error(message); },
   });

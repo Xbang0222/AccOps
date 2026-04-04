@@ -141,6 +141,61 @@ def _save_country(account_id: int, country: str, country_cn: str = ""):
         logger.warning(f"[country] 保存地区失败: {e}")
 
 
+def _sync_account_state_after_login(
+    account_id: int,
+    profile_id: int,
+    email: str,
+    password: str,
+    totp_secret: str = "",
+    recovery_email: str = "",
+):
+    """登录成功后立即同步账号状态，避免前端仍显示空白状态。"""
+    try:
+        cookies = browser_manager.get_cookies(profile_id)
+        if not cookies:
+            logger.warning(f"[login-sync] account #{account_id} 未获取到 cookies，跳过状态同步")
+            return
+
+        result = discover_family_by_cookies(
+            account_id,
+            json.dumps(cookies),
+            profile_id,
+            email,
+            password,
+            totp_secret,
+            recovery_email,
+        )
+        if not result.success:
+            logger.warning(f"[login-sync] account #{account_id} 状态同步失败: {result.message}")
+            return
+
+        sync_group_from_discover(account_id, result)
+        _save_subscription_status(account_id, result.subscription_status, result.subscription_expiry)
+        _save_country(account_id, result.country, result.country_cn)
+    except Exception as e:
+        logger.warning(f"[login-sync] account #{account_id} 状态同步异常: {e}")
+
+
+def _handle_login_success(
+    account_id: int,
+    profile_id: int,
+    email: str,
+    password: str,
+    totp_secret: str = "",
+    recovery_email: str = "",
+):
+    """登录成功后的统一收尾：保存 cookies 并同步账号状态。"""
+    _save_cookies(account_id, profile_id)
+    _sync_account_state_after_login(
+        account_id,
+        profile_id,
+        email,
+        password,
+        totp_secret,
+        recovery_email,
+    )
+
+
 def _save_subscription_status(account_id: int, subscription_status: str, subscription_expiry: str = ""):
     """保存订阅状态到数据库，主号 Ultra 自动传播给同组所有子号"""
     if not subscription_status:
@@ -511,7 +566,14 @@ async def auto_login(req: AutoLoginRequest, db: Session = Depends(get_db)):
     )
     # 登录成功后保存 cookies
     if result.success:
-        _save_cookies(req.account_id, profile_id)
+        _handle_login_success(
+            req.account_id,
+            profile_id,
+            account.email,
+            _decrypt(account.password),
+            _decrypt(account.totp_secret) or "",
+            _decrypt(account.recovery_email) or "",
+        )
     return result.to_dict()
 
 
@@ -949,7 +1011,17 @@ async def automation_websocket(ws: WebSocket):
             else:
                 # 操作完成后自动同步分组
                 if result and result.success:
-                    _save_cookies(account_id, profile_id)
+                    if action == ACTION_LOGIN:
+                        _handle_login_success(
+                            account_id,
+                            profile_id,
+                            email,
+                            password,
+                            totp_secret,
+                            recovery_email,
+                        )
+                    else:
+                        _save_cookies(account_id, profile_id)
                     # OAuth 成功后保存凭证
                     if action == ACTION_OAUTH and hasattr(result, 'extra') and result.extra and result.extra.get("credential"):
                         _save_oauth_credential(account_id, result.extra["credential"])
@@ -966,6 +1038,12 @@ async def automation_websocket(ws: WebSocket):
                         result_msg=result.message,
                         extra=extra_data,
                     )
+                await ws.send_json({
+                    "type": "result",
+                    "success": result.success,
+                    "message": result.message,
+                    "duration_ms": 0,
+                })
 
     except WebSocketDisconnect:
         logger.info("WebSocket automation client disconnected")
