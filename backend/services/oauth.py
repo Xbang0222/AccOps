@@ -12,380 +12,35 @@
 
 import json
 import logging
-import re
 import secrets
 import time
-import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Tuple
-
-import httpx
-import pyotp
+from typing import Optional
 
 from core.constants import (
-    OAUTH_CLIENT_ID as CLIENT_ID,
-    OAUTH_CLIENT_SECRET as CLIENT_SECRET,
-    OAUTH_SCOPES as SCOPES,
-    OAUTH_AUTH_ENDPOINT as AUTH_ENDPOINT,
-    OAUTH_TOKEN_ENDPOINT as TOKEN_ENDPOINT,
-    OAUTH_USERINFO_ENDPOINT as USERINFO_ENDPOINT,
-    OAUTH_REDIRECT_URI as REDIRECT_URI,
-    ANTIGRAVITY_API_ENDPOINT as API_ENDPOINT,
-    ANTIGRAVITY_API_VERSION as API_VERSION,
-    ANTIGRAVITY_DAILY_ENDPOINT,
-    ANTIGRAVITY_STREAM_PATH,
-    ANTIGRAVITY_API_USER_AGENT as API_USER_AGENT,
-    ANTIGRAVITY_API_CLIENT as API_CLIENT,
-    ANTIGRAVITY_CLIENT_METADATA as CLIENT_METADATA,
-    ANTIGRAVITY_DEFAULT_MODEL,
-    FAMILY_HTTP_TIMEOUT,
     SEL_PASSWORD_INPUT,
     SEL_TOTP_INPUT,
-    SEL_OAUTH_APPROVE,
-    SEL_OAUTH_ALLOW,
-    SEL_OAUTH_ALLOW_CN,
-    SEL_OAUTH_CONTINUE,
-    SEL_OAUTH_CONTINUE_CN,
-    SEL_OAUTH_BTN_ALLOW,
-    SEL_OAUTH_BTN_CONTINUE,
     SEL_PHONE_NUMBER_INPUT,
     SEL_PHONE_CODE_INPUT,
     SEL_PHONE_VERIFY_NEXT,
     SMS_WAIT_TIMEOUT,
     SMS_POLL_INTERVAL,
 )
-from services.auth_steps import enter_password, enter_totp
-from services.browser import browser_manager
+from services.oauth_support import (
+    build_auth_url,
+    check_for_code,
+    check_for_error,
+    exchange_code_for_tokens,
+    fetch_project_id,
+    handle_password,
+    handle_totp,
+    is_password_page,
+    is_totp_page,
+    probe_api,
+    try_click_consent_buttons,
+)
 
 logger = logging.getLogger(__name__)
-
-
-# ── 工具函数 ─────────────────────────────────────────────
-
-
-def build_auth_url(state: str) -> str:
-    """构建 Google OAuth 授权 URL"""
-    from urllib.parse import urlencode
-    params = {
-        "access_type": "offline",
-        "client_id": CLIENT_ID,
-        "prompt": "consent",
-        "redirect_uri": REDIRECT_URI,
-        "response_type": "code",
-        "scope": " ".join(SCOPES),
-        "state": state,
-    }
-    return f"{AUTH_ENDPOINT}?{urlencode(params)}"
-
-
-def exchange_code_for_tokens(code: str) -> dict:
-    """用 authorization code 换取 access_token + refresh_token"""
-    data = {
-        "code": code,
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "redirect_uri": REDIRECT_URI,
-        "grant_type": "authorization_code",
-    }
-    resp = httpx.post(
-        TOKEN_ENDPOINT,
-        data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=FAMILY_HTTP_TIMEOUT,
-    )
-    if resp.status_code != 200:
-        raise RuntimeError(f"Token 交换失败: HTTP {resp.status_code} - {resp.text[:200]}")
-    return resp.json()
-
-
-def fetch_user_info(access_token: str) -> str:
-    """用 access_token 获取用户邮箱"""
-    resp = httpx.get(
-        USERINFO_ENDPOINT,
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=FAMILY_HTTP_TIMEOUT,
-    )
-    if resp.status_code != 200:
-        raise RuntimeError(f"获取用户信息失败: HTTP {resp.status_code}")
-    return resp.json().get("email", "")
-
-
-def fetch_project_id(access_token: str) -> str:
-    """通过 loadCodeAssist 获取 GCP project ID"""
-    url = f"{API_ENDPOINT}/{API_VERSION}:loadCodeAssist"
-    body = {
-        "metadata": {
-            "ideType": "ANTIGRAVITY",
-            "platform": "PLATFORM_UNSPECIFIED",
-            "pluginType": "GEMINI",
-        }
-    }
-    resp = httpx.post(
-        url,
-        json=body,
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-            "User-Agent": API_USER_AGENT,
-            "X-Goog-Api-Client": API_CLIENT,
-            "Client-Metadata": CLIENT_METADATA,
-        },
-        timeout=FAMILY_HTTP_TIMEOUT,
-    )
-    if resp.status_code != 200:
-        # 尝试 onboard
-        return _onboard_user(access_token)
-
-    data = resp.json()
-    project_id = ""
-    if isinstance(data.get("cloudaicompanionProject"), str):
-        project_id = data["cloudaicompanionProject"].strip()
-    elif isinstance(data.get("cloudaicompanionProject"), dict):
-        project_id = data["cloudaicompanionProject"].get("id", "").strip()
-
-    if not project_id:
-        # 尝试从 allowedTiers 获取 tierID, 然后 onboard
-        tier_id = "legacy-tier"
-        for tier in data.get("allowedTiers", []):
-            if isinstance(tier, dict) and tier.get("isDefault"):
-                tid = tier.get("id", "").strip()
-                if tid:
-                    tier_id = tid
-                    break
-        project_id = _onboard_user(access_token, tier_id)
-
-    return project_id
-
-
-def _onboard_user(access_token: str, tier_id: str = "legacy-tier") -> str:
-    """通过 onboardUser 获取 project ID (轮询模式)"""
-    url = f"{API_ENDPOINT}/{API_VERSION}:onboardUser"
-    body = {
-        "tierId": tier_id,
-        "metadata": {
-            "ideType": "ANTIGRAVITY",
-            "platform": "PLATFORM_UNSPECIFIED",
-            "pluginType": "GEMINI",
-        }
-    }
-
-    for attempt in range(5):
-        resp = httpx.post(
-            url,
-            json=body,
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-                "User-Agent": API_USER_AGENT,
-                "X-Goog-Api-Client": API_CLIENT,
-                "Client-Metadata": CLIENT_METADATA,
-            },
-            timeout=FAMILY_HTTP_TIMEOUT,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"onboardUser 失败: HTTP {resp.status_code} - {resp.text[:200]}")
-
-        data = resp.json()
-        if data.get("done"):
-            response_data = data.get("response", {})
-            project = response_data.get("cloudaicompanionProject", "")
-            if isinstance(project, dict):
-                return project.get("id", "").strip()
-            if isinstance(project, str):
-                return project.strip()
-            return ""
-
-        time.sleep(2)
-
-    return ""
-
-
-# ── API 可用性探测 ─────────────────────────────────────────
-
-
-def probe_api(access_token: str, project_id: str = "") -> Tuple[bool, str, Optional[str]]:
-    """发送一次简单的 streamGenerateContent 请求来探测 API 是否可用
-
-    返回: (可用?, 消息, 验证链接或None)
-    - 可用: True 表示 API 正常可用
-    - 消息: 成功时为 "API 可用", 失败时为错误详情
-    - 验证链接: 需要验证时返回 validation_url, 否则 None
-    """
-    url = f"{ANTIGRAVITY_DAILY_ENDPOINT}{ANTIGRAVITY_STREAM_PATH}"
-
-    # 构建最小化的 Antigravity 请求
-    request_id = f"agent-{uuid.uuid4()}"
-    session_id = f"-{int(time.time() * 1000)}"
-
-    payload = {
-        "model": ANTIGRAVITY_DEFAULT_MODEL,
-        "userAgent": "antigravity",
-        "requestType": "agent",
-        "project": project_id or "probe-test-00000",
-        "requestId": request_id,
-        "request": {
-            "sessionId": session_id,
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": "hi"}]
-                }
-            ],
-            "generationConfig": {
-                "maxOutputTokens": 32
-            }
-        }
-    }
-
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-        "User-Agent": API_USER_AGENT,
-        "X-Goog-Api-Client": API_CLIENT,
-        "Client-Metadata": CLIENT_METADATA,
-    }
-
-    try:
-        resp = httpx.post(url, json=payload, headers=headers, timeout=FAMILY_HTTP_TIMEOUT)
-
-        if resp.status_code == 200:
-            return True, "API 可用", None
-
-        # 解析错误响应 — Google 返回的是 JSON 数组
-        error_text = resp.text
-        logger.warning(f"API 探测失败: HTTP {resp.status_code} - {error_text[:500]}")
-
-        validation_url = _extract_validation_url(error_text)
-        if validation_url:
-            return False, "需要账号验证", validation_url
-
-        return False, f"HTTP {resp.status_code}: {error_text[:500]}", None
-
-    except Exception as e:
-        logger.error(f"API 探测异常: {e}")
-        return False, f"请求异常: {e}", None
-
-
-def _extract_validation_url(error_text: str) -> Optional[str]:
-    """从 Google API 403 错误响应中提取 validation_url
-
-    Google 返回格式:
-    [{"error": {"details": [{"@type": "...ErrorInfo", "metadata": {"validation_url": "..."}}]}}]
-    """
-    try:
-        import json
-        data = json.loads(error_text)
-        # 响应可能是数组或单个对象
-        error_obj = data[0] if isinstance(data, list) else data
-        details = error_obj.get("error", {}).get("details", [])
-        for detail in details:
-            # 从 ErrorInfo 的 metadata 中提取
-            metadata = detail.get("metadata", {})
-            v_url = metadata.get("validation_url")
-            if v_url:
-                return v_url
-            # 从 Help 的 links 中提取
-            for link in detail.get("links", []):
-                link_url = link.get("url", "")
-                if "accounts.google.com" in link_url:
-                    return link_url
-    except Exception:
-        pass
-
-    # JSON 解析失败时回退到正则
-    match = re.search(r'https?://accounts\.google\.com/[^\s"\'<>]+', error_text)
-    if match:
-        return match.group(0).rstrip('.,;!)')
-    return None
-
-
-# ── 浏览器页面交互辅助 ─────────────────────────────────
-
-
-def _check_for_code(url: str) -> Optional[str]:
-    """从 URL 中提取 authorization code"""
-    if "localhost:51121/oauth-callback" in url or ("code=" in url and "accounts.google" not in url):
-        m = re.search(r'[?&]code=([^&]+)', url)
-        if m:
-            return m.group(1)
-    return None
-
-
-def _check_for_error(url: str) -> Optional[str]:
-    """从 URL 中提取 error"""
-    if "error=" in url and "localhost" in url:
-        m = re.search(r'[?&]error=([^&]+)', url)
-        return m.group(1) if m else "unknown"
-    return None
-
-
-def _is_password_page(page) -> bool:
-    """检测是否在密码输入页面"""
-    url = page.url
-    if "challenge/pwd" in url or "signin/v2/challenge/password" in url:
-        return True
-    # 检查是否有密码输入框
-    pwd = page.ele(SEL_PASSWORD_INPUT, timeout=0.5) or page.ele('input[type="password"]', timeout=0.5)
-    return bool(pwd)
-
-
-def _is_totp_page(page) -> bool:
-    """检测是否在 2FA/TOTP 验证页面"""
-    url = page.url
-    if "challenge/totp" in url or "challenge/selection" in url:
-        return True
-    totp_input = page.ele(SEL_TOTP_INPUT, timeout=0.5) or page.ele('input[type="tel"]', timeout=0.5)
-    return bool(totp_input)
-
-
-def _handle_password(page, password: str, tracker) -> bool:
-    """处理密码输入页面，返回是否成功"""
-    ok = enter_password(page, password, timeout=3)
-    if not ok:
-        tracker.step("密码验证", "fail", "找不到密码输入框")
-        return False
-    tracker.step("密码验证", "ok")
-    return True
-
-
-def _handle_totp(page, totp_secret: str, tracker) -> bool:
-    """处理 2FA/TOTP 验证页面，返回是否成功"""
-    if not totp_secret:
-        tracker.step("2FA 验证", "fail", "需要 2FA 但账号未配置 TOTP")
-        return False
-
-    ok = enter_totp(page, totp_secret, timeout=5)
-    if not ok:
-        tracker.step("2FA 验证", "fail", "找不到 TOTP 输入框")
-        return False
-
-    tracker.step("2FA 验证", "ok", f"已输入验证码")
-    return True
-
-
-def _try_click_consent_buttons(page) -> bool:
-    """尝试点击 OAuth 同意页面上的各种按钮, 返回是否点击了按钮"""
-    # Google OAuth 同意页面上的各种按钮变体
-    selectors = [
-        SEL_OAUTH_APPROVE,              # OAuth 同意页 "Allow" 按钮
-        SEL_OAUTH_ALLOW,                # Allow 文字按钮
-        SEL_OAUTH_ALLOW_CN,             # 中文 Allow
-        SEL_OAUTH_CONTINUE,             # Continue 按钮
-        SEL_OAUTH_CONTINUE_CN,          # 中文 Continue
-        SEL_OAUTH_BTN_ALLOW,            # button 内含 Allow
-        SEL_OAUTH_BTN_CONTINUE,         # button 内含 Continue
-    ]
-    for sel in selectors:
-        try:
-            btn = page.ele(sel, timeout=0.5)
-            if btn:
-                btn.click()
-                return True
-        except Exception:
-            continue
-    return False
-
-
 # ── 浏览器自动 OAuth (核心) ─────────────────────────────
 
 
@@ -443,35 +98,35 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
             current_url = page.url
 
             # 1) 检查是否已经回调 (拿到 code)
-            code = _check_for_code(current_url)
+            code = check_for_code(current_url)
             if code:
                 break
 
             # 2) 检查是否有 error
-            error = _check_for_error(current_url)
+            error = check_for_error(current_url)
             if error:
                 return tracker.result(False, f"授权被拒绝: {error}", step="auth")
 
             # 3) 密码重验证页面
-            if not password_handled and _is_password_page(page):
+            if not password_handled and is_password_page(page):
                 if not password:
                     return tracker.result(False, "需要密码重验证但账号无密码", step="password")
-                if _handle_password(page, password, tracker):
+                if handle_password(page, password, tracker):
                     password_handled = True
                     continue
                 else:
                     return tracker.result(False, "密码验证失败", step="password")
 
             # 4) 2FA/TOTP 验证页面
-            if not totp_handled and _is_totp_page(page):
-                if _handle_totp(page, totp_secret, tracker):
+            if not totp_handled and is_totp_page(page):
+                if handle_totp(page, totp_secret, tracker):
                     totp_handled = True
                     continue
                 else:
                     return tracker.result(False, "2FA 验证失败", step="totp")
 
             # 5) 尝试点击 OAuth 同意按钮
-            if _try_click_consent_buttons(page):
+            if try_click_consent_buttons(page):
                 tracker.step("点击授权按钮", "ok")
                 time.sleep(3)
                 continue
@@ -488,7 +143,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                     pass
 
             # 7) 检查是否有 "Check your phone" 类型的等待提示 (Google Prompt)
-            if "challenge" in current_url and not _is_password_page(page) and not _is_totp_page(page):
+            if "challenge" in current_url and not is_password_page(page) and not is_totp_page(page):
                 if tick % 5 == 0:
                     tracker.step("等待验证", "info", f"请在手机上确认或等待... ({tick}s)")
 
@@ -497,7 +152,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
         if not code:
             # 最后一次检查 URL
             final_url = page.url
-            code = _check_for_code(final_url)
+            code = check_for_code(final_url)
             if not code:
                 return tracker.result(False, f"授权超时, 未获取到 code. URL: {final_url[:100]}", step="auth")
 

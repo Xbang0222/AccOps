@@ -10,6 +10,13 @@ AccOps 是一个自托管的 Google 账号批量管理系统，将**浏览器自
 
 浏览器（DrissionPage）仅负责登录和密码重验证，所有家庭组操作均通过 httpx 直接调用 Google 内部 `batchexecute` RPC 完成——无需页面交互，速度快、稳定性高。
 
+## Documentation
+
+- [架构说明](docs/ARCHITECTURE.md)
+- [维护与扩展指南](docs/MAINTENANCE_GUIDE.md)
+- [家庭组 API 记录](docs/FAMILY_GROUP_API.md)
+- [重构计划记录](docs/plans/2026-04-04-engineering-refactor-plan.md)
+
 ## Features
 
 - **账号管理** — 邮箱、密码、辅助邮箱、2FA 密钥集中存储，实时 TOTP 验证码生成
@@ -191,7 +198,7 @@ frontend/src/
 ├── App.tsx                     # 应用入口
 ├── main.tsx                    # React 入口
 ├── api/                        # Axios 客户端 + API 封装
-├── features/                   # 领域共享逻辑（自动化、浏览器配置等）
+├── features/                   # 领域逻辑（automation / browser / group-detail / sms 等）
 ├── pages/                      # 页面组件
 ├── components/                 # 通用组件
 ├── layouts/                    # 布局组件
