@@ -2,8 +2,8 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import MainLayout from '@/layouts/MainLayout';
 import DashboardPage from '@/pages/DashboardPage';
 import AccountsPage from '@/pages/AccountsPage';
-import GroupManage from '@/pages/GroupManage';
-import GroupDetail from '@/pages/GroupDetail';
+import GroupManagePage from '@/pages/GroupManagePage';
+import GroupDetailPage from '@/pages/GroupDetailPage';
 import SmsPage from '@/pages/SmsPage';
 import SettingsPage from '@/pages/SettingsPage';
 
@@ -16,8 +16,8 @@ export const createRouter = (onLogout: () => void) =>
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: 'dashboard', element: <DashboardPage /> },
         { path: 'accounts', element: <AccountsPage /> },
-        { path: 'groups', element: <GroupManage /> },
-        { path: 'groups/:groupId', element: <GroupDetail /> },
+        { path: 'groups', element: <GroupManagePage /> },
+        { path: 'groups/:groupId', element: <GroupDetailPage /> },
         { path: 'sms', element: <SmsPage /> },
         { path: 'settings', element: <SettingsPage /> },
         { path: '*', element: <Navigate to="/dashboard" replace /> },

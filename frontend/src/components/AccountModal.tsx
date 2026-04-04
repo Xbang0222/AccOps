@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Select, message, Divider } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Divider, Form, Input, Modal, Select, message } from 'antd';
 import {
   MailOutlined,
   LockOutlined,
@@ -12,6 +12,7 @@ import {
   getTags,
 } from '@/api';
 import type { Account } from '@/types';
+import { getErrorMessage } from '@/utils/http';
 
 const { TextArea } = Input;
 
@@ -45,7 +46,7 @@ const AccountModal: React.FC<AccountModalProps> = ({
         form.resetFields();
       }
     }
-  }, [visible, account]);
+  }, [account, form, visible]);
 
   const loadTags = async () => {
     try {
@@ -78,10 +79,8 @@ const AccountModal: React.FC<AccountModalProps> = ({
 
       onSuccess();
       onClose();
-    } catch (error: any) {
-      if (error.response) {
-        message.error(error.response.data.detail || '保存失败');
-      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '保存失败'));
     } finally {
       setLoading(false);
     }

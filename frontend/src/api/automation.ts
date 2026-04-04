@@ -7,7 +7,7 @@ export interface AutomationResult {
   success: boolean;
   message: string;
   step: string;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
 }
 
 /** 自动登录 Google */
@@ -55,8 +55,10 @@ export const discoverFamily = (accountId: number) =>
   client.post<DiscoverResult>(`${BASE}/family/discover`, { account_id: accountId });
 
 /** 获取 OAuth 凭证 JSON */
+export type OAuthCredential = Record<string, unknown>;
+
 export const getOAuthCredential = (accountId: number) =>
-  client.get<Record<string, any>>(`${BASE}/oauth/credential/${accountId}`);
+  client.get<OAuthCredential>(`${BASE}/oauth/credential/${accountId}`);
 
 /** 下载 OAuth 凭证文件 */
 export const downloadOAuthCredential = async (accountId: number) => {

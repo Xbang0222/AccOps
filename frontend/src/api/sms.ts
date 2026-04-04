@@ -36,6 +36,14 @@ export interface SmsActivationRecord {
   updated_at: string;
 }
 
+export interface SmsCountryPrice {
+  country_id: number;
+  country_name: string;
+  phone_code?: string;
+  count: number;
+  price: string;
+}
+
 // ── 提供商 CRUD ─────────────────────────────────────
 
 export const getSmsProviders = () =>
@@ -90,6 +98,6 @@ export const getSmsServices = (providerId?: number) =>
   client.get<{ code: string; name: string }[]>(`${API_PREFIX}/sms/services`, { params: { provider_id: providerId } });
 
 export const getSmsPricesByService = (service: string, providerId?: number) =>
-  client.get<{ country_id: number; country_name: string; count: number; price: string }[]>(
+  client.get<SmsCountryPrice[]>(
     `${API_PREFIX}/sms/prices-by-service/${service}`, { params: { provider_id: providerId } }
   );

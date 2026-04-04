@@ -11,6 +11,7 @@ import {
 } from 'antd';
 import type { BrowserProfile } from '@/api/browser';
 import { createBrowserProfile, updateBrowserProfile } from '@/api';
+import { getErrorMessage } from '@/utils/http';
 
 interface Props {
   open: boolean;
@@ -75,10 +76,8 @@ const BrowserProfileModal: React.FC<Props> = ({
         message.success('配置已创建');
       }
       onSuccess();
-    } catch (err: any) {
-      if (err.response?.data?.detail) {
-        message.error(err.response.data.detail);
-      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '保存浏览器配置失败'));
     }
   };
 

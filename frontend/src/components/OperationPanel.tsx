@@ -14,25 +14,29 @@ import {
 } from 'antd';
 import {
   LoginOutlined,
-  TeamOutlined,
-  UserAddOutlined,
-  CheckCircleOutlined,
-  UserDeleteOutlined,
   LogoutOutlined,
   GlobalOutlined,
   ThunderboltOutlined,
   LoadingOutlined,
   CheckOutlined,
   CloseOutlined,
-  SwapOutlined,
   ArrowLeftOutlined,
   PoweroffOutlined,
-  SyncOutlined,
   StopOutlined,
 } from '@ant-design/icons';
 import type { Account } from '@/types';
 import { discoverFamily } from '@/api';
 import { useAutomationWs } from '@/hooks/useAutomationWs';
+import {
+  FAMILY_AUTOMATION_OPERATIONS,
+  getVisibleAutomationOperations,
+  type AutomationOperationDefinition,
+} from '@/features/automation/operationMeta';
+import {
+  getAutomationOperationIcon,
+  getAutomationOperationPanelBackground,
+} from '@/features/automation/operationPresentation';
+import { getErrorMessage } from '@/utils/http';
 
 const { Text } = Typography;
 
@@ -60,6 +64,16 @@ interface OpDef {
   role?: 'any' | 'owner' | 'member' | 'no-group';
 }
 
+const FAMILY_PANEL_LABELS: Partial<Record<AutomationOperationDefinition['key'], string>> = {
+  'family-discover': '同步家庭组',
+  'family-create': '创建家庭组',
+  'family-invite': '发送邀请',
+  'family-accept': '接受邀请',
+  'family-remove': '移除成员',
+  'family-leave': '退出家庭组',
+  replace: '替换成员',
+};
+
 const OPERATIONS: OpDef[] = [
   {
     key: 'browser',
@@ -77,63 +91,12 @@ const OPERATIONS: OpDef[] = [
     bg: '#e6f4ff',
     needBrowser: true,
   },
-  {
-    key: 'family-discover',
-    label: '同步家庭组',
-    icon: <SyncOutlined />,
-    color: '#1677ff',
-    bg: '#e6f4ff',
-    needBrowser: false,
-  },
-  {
-    key: 'family-create',
-    label: '创建家庭组',
-    icon: <TeamOutlined />,
-    color: '#722ed1',
-    bg: '#f9f0ff',
-    needBrowser: true,
-    role: 'no-group',
-  },
-  {
-    key: 'family-invite',
-    label: '发送邀请',
-    icon: <UserAddOutlined />,
-    color: '#13c2c2',
-    bg: '#e6fffb',
-    needBrowser: true,
-    fields: [{ name: 'invite_email', placeholder: '被邀请人邮箱' }],
-    role: 'owner',
-  },
-  {
-    key: 'family-accept',
-    label: '接受邀请',
-    icon: <CheckCircleOutlined />,
-    color: '#52c41a',
-    bg: '#f6ffed',
-    needBrowser: true,
-    role: 'no-group',
-  },
-  {
-    key: 'family-remove',
-    label: '移除成员',
-    icon: <UserDeleteOutlined />,
-    color: '#ff4d4f',
-    bg: '#fff2f0',
-    needBrowser: true,
-    fields: [{ name: 'member_email', placeholder: '要移除的成员邮箱' }],
-    danger: true,
-    role: 'owner',
-  },
-  {
-    key: 'family-leave',
-    label: '退出家庭组',
-    icon: <LogoutOutlined />,
-    color: '#fa8c16',
-    bg: '#fff7e6',
-    needBrowser: true,
-    danger: true,
-    role: 'member',
-  },
+  ...FAMILY_AUTOMATION_OPERATIONS.map((operation) => ({
+    ...operation,
+    label: FAMILY_PANEL_LABELS[operation.key] ?? operation.label,
+    icon: getAutomationOperationIcon(operation.key),
+    bg: getAutomationOperationPanelBackground(operation.key),
+  })),
   {
     key: 'family-delete',
     label: '删除家庭组',
@@ -142,19 +105,6 @@ const OPERATIONS: OpDef[] = [
     bg: '#fff2f0',
     needBrowser: true,
     danger: true,
-    role: 'owner',
-  },
-  {
-    key: 'replace',
-    label: '替换成员',
-    icon: <SwapOutlined />,
-    color: '#722ed1',
-    bg: '#f9f0ff',
-    needBrowser: true,
-    fields: [
-      { name: 'old_email', placeholder: '旧成员邮箱 (将被移除)' },
-      { name: 'new_email', placeholder: '新成员邮箱 (将被邀请)' },
-    ],
     role: 'owner',
   },
 ];
@@ -198,7 +148,7 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
     },
   });
 
-  const { runningOp, steps, resultMsg } = ws;
+  const { runningOp, steps, resultMsg, execute } = ws;
   const { cancel } = ws;
 
   // 自动滚动到最新步骤
@@ -209,9 +159,9 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
   /** 通过 WebSocket 执行操作 */
   const executeViaWs = useCallback(
     (action: string, extra: Record<string, string> = {}, opKey?: string) => {
-      ws.execute(account.id, action, extra, opKey);
+      execute(account.id, action, extra, opKey);
     },
-    [account.id, ws.execute],
+    [account.id, execute],
   );
 
   /** 替换成员: 后端一体化操作 (移除旧成员 → 邀请新成员 → 可选自动接受) */
@@ -238,9 +188,8 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
         msg.warning(data.message || '同步失败');
         setOpResults((prev) => ({ ...prev, 'family-discover': 'fail' }));
       }
-    } catch (err: any) {
-      const errMsg = err.response?.data?.detail || '同步请求失败';
-      msg.error(errMsg);
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '同步请求失败'));
       setOpResults((prev) => ({ ...prev, 'family-discover': 'fail' }));
     } finally {
       setDiscoverRunning(false);
@@ -333,23 +282,20 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
   const isAnyRunning = runningOp !== null || discoverRunning;
 
   // 计算当前账号的家庭组角色
-  const hasGroup = !!account.family_group_id;
-  const isOwner = !!account.is_family_owner;
-  const isMember = hasGroup && !isOwner;
-  const isFull = (account.family_member_count ?? 0) >= 6; // Google 家庭组最多 6 人
+  const visibleFamilyKeys = new Set(
+    getVisibleAutomationOperations(account).map((operation) => operation.key),
+  );
 
-  // 根据角色过滤可见操作
-  const visibleOps = OPERATIONS.filter((op) => {
-    if (!op.role || op.role === 'any') return true;
-    if (op.role === 'owner') {
-      if (!isOwner) return false;
-      // 满员时隐藏邀请和替换
-      if (isFull && (op.key === 'family-invite' || op.key === 'replace')) return false;
+  const visibleOps = OPERATIONS.filter((operation) => {
+    if (operation.key === 'browser' || operation.key === 'login') {
       return true;
     }
-    if (op.role === 'member') return isMember;
-    if (op.role === 'no-group') return !hasGroup;
-    return true;
+
+    if (operation.key === 'family-delete') {
+      return Boolean(account.is_family_owner);
+    }
+
+    return visibleFamilyKeys.has(operation.key as AutomationOperationDefinition['key']);
   });
 
   return (

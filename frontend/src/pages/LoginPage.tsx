@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, Typography, message, Spin } from 'antd';
 import { LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { checkSetup, setupPassword, login } from '@/api';
+import { getErrorMessage } from '@/utils/http';
 import './LoginPage.css';
 
 const { Title, Text } = Typography;
@@ -46,8 +47,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         message.success('密码设置成功');
         onLoginSuccess(data.access_token);
       }
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || '操作失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '操作失败'));
     } finally {
       setLoading(false);
     }

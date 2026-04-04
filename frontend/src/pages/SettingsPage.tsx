@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Card,
   Switch,
@@ -35,7 +35,7 @@ const SettingsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState<SmsProviderConfig[]>([]);
 
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       const [settingsRes, providersRes] = await Promise.all([getSettings(), getSmsProviders()]);
       setSettings(settingsRes.data);
@@ -45,11 +45,11 @@ const SettingsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [message]);
 
   useEffect(() => {
     fetchSettings();
-  }, []);
+  }, [fetchSettings]);
 
   const handleToggleDebug = async (checked: boolean) => {
     setSaving(true);

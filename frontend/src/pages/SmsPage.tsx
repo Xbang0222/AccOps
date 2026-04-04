@@ -10,12 +10,9 @@ import {
   Typography,
   Flex,
   App,
-  Divider,
   Tooltip,
   Spin,
   Modal,
-  List,
-  Badge,
   Empty,
 } from 'antd';
 import {
@@ -43,7 +40,8 @@ import {
   getSmsPricesByService,
   getSettings,
 } from '@/api';
-import type { SmsProviderConfig, SmsActivationRecord } from '@/api/sms';
+import type { SmsProviderConfig, SmsActivationRecord, SmsCountryPrice } from '@/api/sms';
+import { getErrorMessage } from '@/utils/http';
 
 const { Text } = Typography;
 
@@ -59,14 +57,6 @@ const STATUS_MAP: Record<string, { color: string; label: string }> = {
   cancelled: { color: 'warning', label: '已取消' },
   error: { color: 'error', label: '错误' },
 };
-
-interface CountryPrice {
-  country_id: number;
-  country_name: string;
-  phone_code: string;
-  count: number;
-  price: string;
-}
 
 const SmsPage: React.FC = () => {
   const { message: msg } = App.useApp();
@@ -89,7 +79,7 @@ const SmsPage: React.FC = () => {
   // 左侧: 国家列表 (基于默认服务)
   const [services, setServices] = useState<{ code: string; name: string }[]>([]);
   const [countrySearch, setCountrySearch] = useState('');
-  const [countryPrices, setCountryPrices] = useState<CountryPrice[]>([]);
+  const [countryPrices, setCountryPrices] = useState<SmsCountryPrice[]>([]);
   const [countryLoading, setCountryLoading] = useState(false);
   const [countrySortBy, setCountrySortBy] = useState<'count' | 'price'>('count');
 
@@ -107,13 +97,18 @@ const SmsPage: React.FC = () => {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  useEffect(() => {
-    loadAll();
-    loadHistory(1);
-    return () => { if (pollTimer.current) clearInterval(pollTimer.current); };
+  const loadHistory = useCallback(async (page: number) => {
+    setHistoryLoading(true);
+    try {
+      const { data } = await getSmsHistory(page, 15);
+      setHistory(data.records);
+      setHistoryTotal(data.total);
+      setHistoryPage(page);
+    } catch { /* silent */ }
+    finally { setHistoryLoading(false); }
   }, []);
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     try {
       const [provRes, settingsRes] = await Promise.all([getSmsProviders(), getSettings()]);
@@ -122,12 +117,18 @@ const SmsPage: React.FC = () => {
       setDefaultProviderId(defId);
       const activeProvider = defId ? provRes.data.find((p) => p.id === defId) : provRes.data[0];
       if (activeProvider?.api_key) {
-        loadServices(activeProvider.id);
-        loadCountryPrices(activeProvider.default_service || 'go', activeProvider.id);
+        void loadServices(activeProvider.id);
+        void loadCountryPrices(activeProvider.default_service || 'go', activeProvider.id);
       }
     } catch { /* silent */ }
     finally { setLoading(false); }
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadAll();
+    void loadHistory(1);
+    return () => { if (pollTimer.current) clearInterval(pollTimer.current); };
+  }, [loadAll, loadHistory]);
 
   const getActiveProvider = () => {
     if (defaultProviderId) return providers.find((p) => p.id === defaultProviderId);
@@ -194,10 +195,10 @@ const SmsPage: React.FC = () => {
       const { data } = await getSmsPricesByService(service, providerId);
       setConfigCountries(
         (Array.isArray(data) ? data : [])
-          .filter((c: any) => c.count > 0)
-          .map((c: any) => ({
-            value: c.country_id,
-            label: `${c.country_name}${c.phone_code ? ' (' + c.phone_code + ')' : ''} - $${c.price} (${c.count})`,
+          .filter((country) => country.count > 0)
+          .map((country) => ({
+            value: country.country_id,
+            label: `${country.country_name}${country.phone_code ? ` (${country.phone_code})` : ''} - $${country.price} (${country.count})`,
           }))
       );
     } catch { /* silent */ }
@@ -224,10 +225,10 @@ const SmsPage: React.FC = () => {
       const { data: newProviders } = await getSmsProviders();
       setProviders(newProviders);
       // 加载服务列表和当前服务的国家列表
-      loadServices(provider.id);
-      loadConfigCountries(configService, provider.id);
-    } catch (err: any) {
-      setConfigTestResult({ ok: false, msg: err.response?.data?.detail || '测试失败' });
+      void loadServices(provider.id);
+      void loadConfigCountries(configService, provider.id);
+    } catch (error: unknown) {
+      setConfigTestResult({ ok: false, msg: getErrorMessage(error, '测试失败') });
     } finally { setConfigTesting(false); }
   };
 
@@ -244,8 +245,8 @@ const SmsPage: React.FC = () => {
       }
       msg.success('配置已保存');
       setConfigOpen(false);
-      loadAll();
-    } catch (err: any) { msg.error(err.response?.data?.detail || '保存失败'); }
+      void loadAll();
+    } catch (error: unknown) { msg.error(getErrorMessage(error, '保存失败')); }
     finally { setConfigSaving(false); }
   };
 
@@ -261,7 +262,7 @@ const SmsPage: React.FC = () => {
       setActiveActivation({ activation_id: data.activation_id, phone_number: data.phone_number, cost: data.cost, status: 'pending', code: '', provider_id: provider.id, service: serviceCode });
       msg.success(`号码: ${data.phone_number}`);
       startPolling(data.activation_id, provider.id);
-    } catch (err: any) { msg.error(err.response?.data?.detail || '购买失败'); }
+    } catch (error: unknown) { msg.error(getErrorMessage(error, '购买失败')); }
     finally { setBuyLoading(null); }
   };
 
@@ -276,27 +277,27 @@ const SmsPage: React.FC = () => {
           if (pollTimer.current) clearInterval(pollTimer.current);
           setPolling(false);
           msg.success(`验证码: ${data.code}`);
-          loadHistory(1);
+          void loadHistory(1);
         } else if (data.status === 'CANCEL') {
           setActiveActivation((prev) => prev ? { ...prev, status: 'cancelled' } : null);
           if (pollTimer.current) clearInterval(pollTimer.current);
           setPolling(false);
-          loadHistory(1);
+          void loadHistory(1);
         }
       } catch { /* silent */ }
     }, 5000);
-  }, [msg]);
+  }, [loadHistory, msg]);
 
   const handleFinish = async () => {
     if (!activeActivation) return;
-    try { await finishSmsActivation(activeActivation.activation_id, activeActivation.provider_id); setActiveActivation((prev) => prev ? { ...prev, status: 'finished' } : null); msg.success('已完成'); loadHistory(1); }
-    catch (err: any) { msg.error(err.response?.data?.detail || '失败'); }
+    try { await finishSmsActivation(activeActivation.activation_id, activeActivation.provider_id); setActiveActivation((prev) => prev ? { ...prev, status: 'finished' } : null); msg.success('已完成'); void loadHistory(1); }
+    catch (error: unknown) { msg.error(getErrorMessage(error, '失败')); }
   };
 
   const handleCancel = async () => {
     if (!activeActivation) return;
-    try { await cancelSmsActivation(activeActivation.activation_id, activeActivation.provider_id); setActiveActivation((prev) => prev ? { ...prev, status: 'cancelled' } : null); if (pollTimer.current) clearInterval(pollTimer.current); setPolling(false); msg.success('已取消'); loadHistory(1); }
-    catch (err: any) { msg.error(err.response?.data?.detail || '失败'); }
+    try { await cancelSmsActivation(activeActivation.activation_id, activeActivation.provider_id); setActiveActivation((prev) => prev ? { ...prev, status: 'cancelled' } : null); if (pollTimer.current) clearInterval(pollTimer.current); setPolling(false); msg.success('已取消'); void loadHistory(1); }
+    catch (error: unknown) { msg.error(getErrorMessage(error, '失败')); }
   };
 
   const handleHistoryCancel = async (record: SmsActivationRecord) => {
@@ -309,8 +310,8 @@ const SmsPage: React.FC = () => {
         if (pollTimer.current) clearInterval(pollTimer.current);
         setPolling(false);
       }
-      loadHistory(historyPage);
-    } catch (err: any) { msg.error(err.response?.data?.detail || '取消失败'); }
+      void loadHistory(historyPage);
+    } catch (error: unknown) { msg.error(getErrorMessage(error, '取消失败')); }
   };
 
   const handleHistoryFinish = async (record: SmsActivationRecord) => {
@@ -320,25 +321,22 @@ const SmsPage: React.FC = () => {
       if (activeActivation?.activation_id === record.activation_id) {
         setActiveActivation((prev) => prev ? { ...prev, status: 'finished' } : null);
       }
-      loadHistory(historyPage);
-    } catch (err: any) { msg.error(err.response?.data?.detail || '完成失败'); }
+      void loadHistory(historyPage);
+    } catch (error: unknown) { msg.error(getErrorMessage(error, '完成失败')); }
   };
 
   const copyText = (text: string, label: string) => navigator.clipboard.writeText(text).then(() => msg.success(`${label}已复制`));
-
-  const loadHistory = async (page: number) => {
-    setHistoryLoading(true);
-    try { const { data } = await getSmsHistory(page, 15); setHistory(data.records); setHistoryTotal(data.total); setHistoryPage(page); }
-    catch { /* silent */ }
-    finally { setHistoryLoading(false); }
-  };
 
   if (loading) return <div style={{ textAlign: 'center', padding: '100px 0' }}><Spin size="large" /></div>;
 
   const activeProvider = getActiveProvider();
   const defaultService = activeProvider?.default_service || 'go';
   const filteredCountries = countrySearch
-    ? countryPrices.filter((cp) => cp.country_name.toLowerCase().includes(countrySearch.toLowerCase()) || cp.phone_code.includes(countrySearch))
+    ? countryPrices.filter(
+        (cp) =>
+          cp.country_name.toLowerCase().includes(countrySearch.toLowerCase())
+          || (cp.phone_code ?? '').includes(countrySearch),
+      )
     : countryPrices;
   const sortedCountries = [...filteredCountries]
     .sort((a, b) => countrySortBy === 'price' ? parseFloat(a.price) - parseFloat(b.price) : b.count - a.count)
@@ -459,7 +457,7 @@ const SmsPage: React.FC = () => {
           extra={
             <Space size={8}>
               {activeProvider && <Tag color="green">${activeProvider.balance || '—'}</Tag>}
-              <Button size="small" type="text" icon={<ReloadOutlined />} onClick={() => loadHistory(historyPage)} />
+              <Button size="small" type="text" icon={<ReloadOutlined />} onClick={() => void loadHistory(historyPage)} />
             </Space>
           }
           styles={{ body: { flex: 1, padding: 0, overflow: 'hidden' } }}>
@@ -476,7 +474,7 @@ const SmsPage: React.FC = () => {
               { title: '状态', dataIndex: 'status', width: 95,
                 render: (v: string) => { const s = STATUS_MAP[v] || { color: 'default', label: v }; return <Tag color={s.color}>{s.label}</Tag>; } },
               { title: '时间', dataIndex: 'created_at', width: 150, render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '-' },
-              { title: '操作', width: 100, render: (_: any, record: SmsActivationRecord) => (
+              { title: '操作', width: 100, render: (_value: unknown, record: SmsActivationRecord) => (
                 <Space size={4}>
                   {record.status === 'pending' && (
                     <Tooltip title="取消"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleHistoryCancel(record)} /></Tooltip>

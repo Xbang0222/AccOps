@@ -40,12 +40,13 @@ import {
   getAccounts,
 } from '@/api';
 import type { Group, Account } from '@/types';
+import { getErrorMessage } from '@/utils/http';
 import { maskEmail } from '@/utils/mask';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
-const GroupManage: React.FC = () => {
+const GroupManagePage: React.FC = () => {
   const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -53,9 +54,8 @@ const GroupManage: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [masked, setMasked] = useState(false);
-  const [searchText, setSearchText] = useState('');
   const [form] = Form.useForm();
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadIdRef = useRef(0);
 
   useEffect(() => {
@@ -64,10 +64,9 @@ const GroupManage: React.FC = () => {
   }, []);
 
   const handleSearchChange = (value: string) => {
-    setSearchText(value);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      loadGroups(value);
+      void loadGroups(value);
     }, 300);
   };
 
@@ -88,8 +87,8 @@ const GroupManage: React.FC = () => {
     try {
       const { data } = await getAccounts('', undefined, undefined, 1, 999);
       setAccounts(data.accounts);
-    } catch (error) {
-      console.error('加载账号失败:', error);
+    } catch {
+      message.error('加载账号失败');
     }
   };
 
@@ -155,14 +154,10 @@ const GroupManage: React.FC = () => {
       }
       setModalVisible(false);
       loadGroups();
-    } catch (error: any) {
-      if (error.response) {
-        message.error(error.response.data.detail || '保存失败');
-      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '保存失败'));
     }
   };
-
-  const memberCount = (group: Group) => group.accounts?.length ?? 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -199,7 +194,6 @@ const GroupManage: React.FC = () => {
           ) : (
             <Row gutter={[16, 16]}>
               {groups.map((group) => {
-                const count = memberCount(group);
                 const subAccounts = (group.accounts || []).filter(
                   (acc) => acc.id !== group.main_account_id
                 );
@@ -387,4 +381,4 @@ const GroupManage: React.FC = () => {
   );
 };
 
-export default GroupManage;
+export default GroupManagePage;

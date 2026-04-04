@@ -4,14 +4,12 @@ import {
   Card,
   Tag,
   Modal,
-  message,
   Typography,
   Tooltip,
   Flex,
   Dropdown,
   Empty,
   Spin,
-  Divider,
   Space,
   Input,
   Select,
@@ -25,17 +23,12 @@ import {
   TeamOutlined,
   MoreOutlined,
   CopyOutlined,
-  EditOutlined,
   DeleteOutlined,
   LoginOutlined,
   PoweroffOutlined,
   LoadingOutlined,
-  SyncOutlined,
-  UserAddOutlined,
-  UserDeleteOutlined,
   CheckCircleOutlined,
-  LogoutOutlined,
-  SwapOutlined,
+  UserDeleteOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
   ClockCircleOutlined,
@@ -53,21 +46,26 @@ import {
   stopBrowser,
   getBrowserProfiles,
   createBrowserProfile,
-  addAccountToGroup,
   removeAccountFromGroup,
   clearBrowserData,
   discoverFamily,
-  getAccounts,
   getOAuthCredential,
   downloadOAuthCredential,
 } from '@/api';
+import { createDefaultBrowserProfile } from '@/features/browser/browserProfileDefaults';
+import {
+  getVisibleAutomationOperations,
+  type AutomationOperationDefinition,
+} from '@/features/automation/operationMeta';
+import { getAutomationOperationIcon } from '@/features/automation/operationPresentation';
 import type { Account, Group } from '@/types';
+import { getErrorMessage } from '@/utils/http';
 import { maskEmail } from '@/utils/mask';
 import { generateTOTP } from '@/utils/totp';
 import { useAutomationWs } from '@/hooks/useAutomationWs';
 import type { StepMsg } from '@/hooks/useAutomationWs';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 /** 每个账号独立的操作状态 */
 interface AccountOpState {
@@ -77,49 +75,7 @@ interface AccountOpState {
   resultSuccess: boolean | null;
 }
 
-/** 操作定义 */
-interface OpDef {
-  key: string;
-  label: string;
-  icon: React.ReactNode;
-  color: string;
-  needBrowser: boolean;
-  fields?: { name: string; placeholder: string }[];
-  danger?: boolean;
-  role?: 'any' | 'owner' | 'member' | 'no-group';
-}
-
-const OPERATIONS: OpDef[] = [
-  { key: 'family-discover', label: '同步', icon: <SyncOutlined />, color: '#1677ff', needBrowser: false, role: 'owner' },
-  { key: 'family-create', label: '建组', icon: <TeamOutlined />, color: '#722ed1', needBrowser: true, role: 'no-group' },
-  { key: 'family-invite', label: '邀请', icon: <UserAddOutlined />, color: '#13c2c2', needBrowser: true, fields: [{ name: 'invite_email', placeholder: '被邀请人邮箱（多个用逗号或换行分隔）' }], role: 'owner' },
-  { key: 'family-accept', label: '接受', icon: <CheckCircleOutlined />, color: '#52c41a', needBrowser: true, role: 'no-group' },
-  { key: 'family-remove', label: '移除', icon: <UserDeleteOutlined />, color: '#ff4d4f', needBrowser: true, fields: [{ name: 'member_email', placeholder: '要移除的成员邮箱（多个用逗号或换行分隔）' }], danger: true, role: 'owner' },
-  { key: 'family-leave', label: '退组', icon: <LogoutOutlined />, color: '#fa8c16', needBrowser: true, danger: true, role: 'member' },
-  { key: 'replace', label: '替换', icon: <SwapOutlined />, color: '#722ed1', needBrowser: true, fields: [{ name: 'old_email', placeholder: '旧成员邮箱 (将被移除)' }, { name: 'new_email', placeholder: '新成员邮箱 (将被邀请)' }], role: 'owner' },
-];
-
-/** 获取该账号可见的操作列表 */
-const getVisibleOps = (account: Account) => {
-  const hasGroup = !!account.family_group_id;
-  const isOwner = !!account.is_family_owner;
-  const isMember = hasGroup && !isOwner;
-  const isFull = (account.family_member_count ?? 0) >= 6; // 含管理员共 6 人
-
-  return OPERATIONS.filter((op) => {
-    if (!op.role || op.role === 'any') return true;
-    if (op.role === 'owner') {
-      if (!isOwner) return false;
-      if (isFull && op.key === 'family-invite') return false;
-      return true;
-    }
-    if (op.role === 'member') return isMember;
-    if (op.role === 'no-group') return !hasGroup;
-    return true;
-  });
-};
-
-const GroupDetail: React.FC = () => {
+const GroupDetailPage: React.FC = () => {
   const { groupId: groupIdParam } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const groupId = Number(groupIdParam);
@@ -187,6 +143,7 @@ const GroupDetail: React.FC = () => {
       msg.error(message);
     },
   });
+  const { execute } = automation;
 
   // 同步 hook 的 steps 到当前活跃账号的 opStates
   useEffect(() => {
@@ -201,7 +158,7 @@ const GroupDetail: React.FC = () => {
   }, [automation.steps, automation.runningOp]);
 
   // 输入字段弹窗
-  const [activeOp, setActiveOp] = useState<OpDef | null>(null);
+  const [activeOp, setActiveOp] = useState<AutomationOperationDefinition | null>(null);
   const [activeAccountId, setActiveAccountId] = useState<number | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   // 多选邮箱 (邀请/移除)
@@ -213,16 +170,7 @@ const GroupDetail: React.FC = () => {
   // 选中的账号 (右侧日志面板)
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
 
-  // 添加成员
-  const [addMemberVisible, setAddMemberVisible] = useState(false);
-  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
-
-  useEffect(() => {
-    loadGroup();
-    loadBrowserStatus();
-  }, [groupId]);
-
-  const loadGroup = async () => {
+  const loadGroup = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await getGroup(groupId);
@@ -232,9 +180,9 @@ const GroupDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId, msg]);
 
-  const loadBrowserStatus = async () => {
+  const loadBrowserStatus = useCallback(async () => {
     try {
       const { data } = await getBrowserProfiles();
       const map: Record<number, number> = {};
@@ -248,7 +196,12 @@ const GroupDetail: React.FC = () => {
       setProfileMap(map);
       setBrowserRunning(running);
     } catch { /* silent */ }
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadGroup();
+    void loadBrowserStatus();
+  }, [loadBrowserStatus, loadGroup]);
 
   const handleLaunchBrowser = async (accountId: number) => {
     setSelectedAccountId(accountId);
@@ -257,15 +210,9 @@ const GroupDetail: React.FC = () => {
       let profileId = profileMap[accountId];
       if (!profileId) {
         const account = (group?.accounts || []).find((a) => a.id === accountId);
-        const res = await createBrowserProfile({
-          name: account?.email || `Profile-${accountId}`,
-          account_id: accountId,
-          proxy_type: '', proxy_host: '', proxy_port: null,
-          proxy_username: '', proxy_password: '', user_agent: '',
-          os_type: 'macos', timezone: '', language: 'en-US',
-          screen_width: 1920, screen_height: 1080,
-          webrtc_disabled: true, notes: '',
-        });
+        const res = await createBrowserProfile(
+          createDefaultBrowserProfile(accountId, account?.email || ''),
+        );
         profileId = res.data.id;
         setProfileMap((prev) => ({ ...prev, [accountId]: profileId }));
       }
@@ -275,8 +222,8 @@ const GroupDetail: React.FC = () => {
       setBrowserLoading((prev) => { const next = new Set(prev); next.delete(accountId); return next; });
       executeViaWs(accountId, 'login', {}, 'login');
       return;
-    } catch (err: any) {
-      msg.error(err.response?.data?.detail || '启动失败');
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '启动失败'));
     } finally {
       setBrowserLoading((prev) => { const next = new Set(prev); next.delete(accountId); return next; });
     }
@@ -290,8 +237,8 @@ const GroupDetail: React.FC = () => {
       await stopBrowser(profileId);
       setBrowserRunning((prev) => { const next = new Set(prev); next.delete(accountId); return next; });
       msg.success('浏览器已停止');
-    } catch (err: any) {
-      msg.error(err.response?.data?.detail || '停止失败');
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '停止失败'));
     } finally {
       setBrowserLoading((prev) => { const next = new Set(prev); next.delete(accountId); return next; });
     }
@@ -313,8 +260,8 @@ const GroupDetail: React.FC = () => {
         try {
           await clearBrowserData(profileId);
           msg.success('浏览器数据已清除');
-        } catch (err: any) {
-          msg.error(err.response?.data?.detail || '清除失败');
+        } catch (error: unknown) {
+          msg.error(getErrorMessage(error, '清除失败'));
         }
       },
     });
@@ -334,12 +281,12 @@ const GroupDetail: React.FC = () => {
         [accountId]: { runningOpKey: trackKey, steps: [], resultMsg: '', resultSuccess: null }
       }));
 
-      automation.execute(accountId, action, extra, opKey);
+      execute(accountId, action, extra, opKey);
     },
-    [automation.execute],
+    [execute],
   );
 
-  const handleOpClick = (accountId: number, op: OpDef) => {
+  const handleOpClick = (accountId: number, op: AutomationOperationDefinition) => {
     if (op.key === 'family-discover') {
       handleDiscover(accountId);
       return;
@@ -348,9 +295,8 @@ const GroupDetail: React.FC = () => {
       msg.warning('请先启动浏览器');
       return;
     }
-    const actionKey = op.key === 'family-delete' ? 'family-leave' : op.key;
     if (!op.fields) {
-      executeViaWs(accountId, actionKey, {}, op.key);
+      executeViaWs(accountId, op.key, {}, op.key);
       return;
     }
     setFormValues({});
@@ -370,14 +316,14 @@ const GroupDetail: React.FC = () => {
       const { data } = await discoverFamily(accountId);
       if (data.success) {
         msg.success(data.message || '同步成功');
-        loadGroup();
+        void loadGroup();
       } else if (data.cookies_expired) {
         msg.warning(data.message || 'Cookies 已过期，请重新登录');
       } else {
         msg.warning(data.message || '同步失败');
       }
-    } catch (err: any) {
-      msg.error(err.response?.data?.detail || '同步请求失败');
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '同步请求失败'));
     } finally {
       setOpStates(prev => ({
         ...prev,
@@ -479,8 +425,8 @@ const GroupDetail: React.FC = () => {
       const { data } = await getOAuthCredential(accountId);
       await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
       msg.success('OAuth JSON 已复制到剪贴板');
-    } catch (error: any) {
-      msg.error(error.response?.data?.detail || '获取 OAuth 凭证失败');
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '获取 OAuth 凭证失败'));
     }
   };
 
@@ -493,30 +439,8 @@ const GroupDetail: React.FC = () => {
       a.click();
       URL.revokeObjectURL(a.href);
       msg.success('下载成功');
-    } catch (error: any) {
-      msg.error(error.response?.data?.detail || '下载失败');
-    }
-  };
-
-  // 以下代码用于兼容，但不再被右上角按钮触发
-  const handleAddMember = async () => {
-    try {
-      const { data } = await getAccounts('', undefined, undefined, 1, 999);
-      setAllAccounts(data.accounts.filter((a: Account) => !a.family_group_id));
-      setAddMemberVisible(true);
-    } catch {
-      msg.error('加载账号列表失败');
-    }
-  };
-
-  const handleAddAccountToGroup = async (accountId: number) => {
-    try {
-      await addAccountToGroup(groupId, accountId);
-      msg.success('账号已添加到分组');
-      setAddMemberVisible(false);
-      loadGroup();
-    } catch (err: any) {
-      msg.error(err.response?.data?.detail || '添加失败');
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '下载失败'));
     }
   };
 
@@ -524,7 +448,7 @@ const GroupDetail: React.FC = () => {
     try {
       await removeAccountFromGroup(accountId);
       msg.success('账号已从分组移除');
-      loadGroup();
+      void loadGroup();
     } catch {
       msg.error('移除失败');
     }
@@ -557,7 +481,7 @@ const GroupDetail: React.FC = () => {
     const isPending = !!record.is_family_pending;
     const isRunning = browserRunning.has(record.id);
     const isBrowserLoading = browserLoading.has(record.id);
-    const visibleOps = isPending ? [] : getVisibleOps(record);
+    const visibleOps = isPending ? [] : getVisibleAutomationOperations(record);
     const opState = opStates[record.id];
     const isThisAccountRunning = !!opState?.runningOpKey;
     const runningOpKey = opState?.runningOpKey || null;
@@ -721,7 +645,12 @@ const GroupDetail: React.FC = () => {
                       <Button type="text" size="small" disabled={disabled && !isThisOpRunning}
                         onClick={() => handleOpClick(record.id, op)} style={{ padding: '0 4px' }}
                         icon={isThisOpRunning ? <LoadingOutlined style={{ color: '#1677ff' }} />
-                          : React.cloneElement(op.icon as React.ReactElement<any>, { style: { color: disabled ? '#d9d9d9' : op.color } })} />
+                          : React.isValidElement(getAutomationOperationIcon(op.key))
+                            ? React.cloneElement(
+                                getAutomationOperationIcon(op.key) as React.ReactElement<{ style?: React.CSSProperties }>,
+                                { style: { color: disabled ? '#d9d9d9' : op.color } },
+                              )
+                            : getAutomationOperationIcon(op.key)} />
                     </Tooltip>
                   );
                 })}
@@ -945,34 +874,8 @@ const GroupDetail: React.FC = () => {
           )}
         </div>
       </Modal>
-
-      {/* 添加成员弹窗 */}
-      <Modal
-        title="添加成员到分组"
-        open={addMemberVisible}
-        onCancel={() => setAddMemberVisible(false)}
-        footer={null}
-        width={480}
-      >
-        {allAccounts.length > 0 ? (
-          <Select
-            style={{ width: '100%' }}
-            placeholder="选择要添加的账号"
-            onChange={handleAddAccountToGroup}
-            value={undefined}
-            showSearch
-            optionFilterProp="label"
-            options={allAccounts.map((acc) => ({
-              label: acc.email,
-              value: acc.id,
-            }))}
-          />
-        ) : (
-          <Text type="secondary">没有可添加的账号</Text>
-        )}
-      </Modal>
     </div>
   );
 };
 
-export default GroupDetail;
+export default GroupDetailPage;

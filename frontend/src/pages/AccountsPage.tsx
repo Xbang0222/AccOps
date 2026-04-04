@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Button,
   Input,
@@ -44,7 +44,9 @@ import {
   launchBrowser,
   stopBrowser,
 } from '@/api';
+import { createDefaultBrowserProfile } from '@/features/browser/browserProfileDefaults';
 import type { Account } from '@/types';
+import { getErrorMessage } from '@/utils/http';
 import AccountModal from '@/components/AccountModal';
 import { maskEmail } from '@/utils/mask';
 import { generateTOTP } from '@/utils/totp';
@@ -97,16 +99,7 @@ const AccountsPage: React.FC = () => {
     onError: (_opKey, message) => { msg.error(message); },
   });
 
-  useEffect(() => {
-    loadAccounts();
-    loadFilters();
-  }, [searchText, groupFilter, tagFilter, currentPage, pageSize, ownerOnly]);
-
-  useEffect(() => {
-    loadBrowserStatus();
-  }, []);
-
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await getAccounts(searchText, groupFilter, tagFilter, currentPage, pageSize, ownerOnly);
@@ -117,17 +110,17 @@ const AccountsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, groupFilter, msg, ownerOnly, pageSize, searchText, tagFilter]);
 
-  const loadFilters = async () => {
+  const loadFilters = useCallback(async () => {
     try {
       const [groupsRes, tagsRes] = await Promise.all([getGroups(), getTags()]);
       setGroups(groupsRes.data.groups);
       setTags(tagsRes.data.tags);
     } catch { /* silent */ }
-  };
+  }, []);
 
-  const loadBrowserStatus = async () => {
+  const loadBrowserStatus = useCallback(async () => {
     try {
       const { data } = await getBrowserProfiles();
       const map: Record<number, number> = {};
@@ -141,7 +134,16 @@ const AccountsPage: React.FC = () => {
       setProfileMap(map);
       setBrowserRunning(running);
     } catch { /* silent */ }
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadAccounts();
+    void loadFilters();
+  }, [loadAccounts, loadFilters]);
+
+  useEffect(() => {
+    void loadBrowserStatus();
+  }, [loadBrowserStatus]);
 
   const handleLaunchAndLogin = async (record: Account) => {
     const accountId = record.id;
@@ -149,15 +151,7 @@ const AccountsPage: React.FC = () => {
     try {
       let profileId = profileMap[accountId];
       if (!profileId) {
-        const res = await createBrowserProfile({
-          name: record.email || `Profile-${accountId}`,
-          account_id: accountId,
-          proxy_type: '', proxy_host: '', proxy_port: null,
-          proxy_username: '', proxy_password: '', user_agent: '',
-          os_type: 'macos', timezone: '', language: 'en-US',
-          screen_width: 1920, screen_height: 1080,
-          webrtc_disabled: true, notes: '',
-        });
+        const res = await createBrowserProfile(createDefaultBrowserProfile(accountId, record.email));
         profileId = res.data.id;
         setProfileMap((prev) => ({ ...prev, [accountId]: profileId }));
       }
@@ -167,8 +161,8 @@ const AccountsPage: React.FC = () => {
 
       // 通过 WebSocket 触发自动登录（不显示日志）
       loginWs.execute(accountId, 'login');
-    } catch (err: any) {
-      msg.error(err.response?.data?.detail || '启动失败');
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '启动失败'));
     } finally {
       setBrowserLoading((prev) => { const next = new Set(prev); next.delete(accountId); return next; });
     }
@@ -182,8 +176,8 @@ const AccountsPage: React.FC = () => {
       await stopBrowser(profileId);
       setBrowserRunning((prev) => { const next = new Set(prev); next.delete(accountId); return next; });
       msg.success('浏览器已停止');
-    } catch (err: any) {
-      msg.error(err.response?.data?.detail || '停止失败');
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '停止失败'));
     } finally {
       setBrowserLoading((prev) => { const next = new Set(prev); next.delete(accountId); return next; });
     }
@@ -234,8 +228,8 @@ const AccountsPage: React.FC = () => {
       if (data.success > 0) {
         setImportVisible(false); setImportText(''); loadAccounts(); loadFilters();
       }
-    } catch (err: any) {
-      msg.error(err.response?.data?.detail || '导入失败');
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '导入失败'));
     } finally { setImportLoading(false); }
   };
 
