@@ -1,54 +1,20 @@
+# macOS
+.DS_Store
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-*.egg-info/
-dist/
-build/
-*.egg
+.pytest_cache/
+.mypy_cache/
 
-# Virtual environments
-.venv/
-venv/
-env/
+# Local runtime artifacts
+backend/.automation_logs/
+backend/.browser_profiles/
+backend/.venv/
 
-# Database & crypto
-*.db
-.crypto_salt
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Environment variables
-.env
-.env.local
-.env.production
-
-# Node.js (frontend)
-node_modules/
+# Frontend
+frontend/node_modules/
 frontend/dist/
 
-# Misc
-*.log
-.camoufox/
-.automation_logs/
-
-# Claude Code and MCP
-.claude/
-.playwright-mcp/
-
-# Backups
-*.sql
-*.bak
-
-# Browser Profiles
-backend/.browser_profiles/
+# Tooling
+.omx/

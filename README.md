@@ -103,6 +103,14 @@ uv run python run.py --reload
 
 API 文档：http://localhost:8000/docs
 
+测试：
+
+```bash
+cd backend
+uv run python -m unittest discover -s tests -p "test_*.py"
+uv run python -m compileall app.py config.py deps.py core models routers services utils
+```
+
 ### Frontend
 
 ```bash
@@ -117,6 +125,8 @@ pnpm dev
 
 ```bash
 cd frontend
+pnpm lint
+pnpm test:run
 pnpm build
 # 产物在 dist/
 ```
@@ -181,6 +191,7 @@ frontend/src/
 ├── App.tsx                     # 应用入口
 ├── main.tsx                    # React 入口
 ├── api/                        # Axios 客户端 + API 封装
+├── features/                   # 领域共享逻辑（自动化、浏览器配置等）
 ├── pages/                      # 页面组件
 ├── components/                 # 通用组件
 ├── layouts/                    # 布局组件

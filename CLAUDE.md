@@ -59,12 +59,15 @@ frontend/src/
 │   ├── automation.ts           # 自动化 API
 │   ├── settings.ts             # 设置 API
 │   └── sms.ts                  # 接码管理 API
+├── features/
+│   ├── automation/             # 自动化共享元数据与展示映射
+│   └── browser/                # 浏览器配置默认值等领域逻辑
 ├── pages/
 │   ├── LoginPage.tsx            # 登录页
 │   ├── DashboardPage.tsx        # 仪表盘
 │   ├── AccountsPage.tsx         # 账号管理 (表格 + 操作面板)
-│   ├── GroupManage.tsx           # 分组管理 (卡片列表)
-│   ├── GroupDetail.tsx           # 分组详情 (左侧卡片列表 + 右侧日志面板)
+│   ├── GroupManagePage.tsx       # 分组管理 (卡片列表)
+│   ├── GroupDetailPage.tsx       # 分组详情 (左侧卡片列表 + 右侧日志面板)
 │   ├── SmsPage.tsx              # 接码管理 (左侧国家列表 + 右侧历史记录)
 │   └── SettingsPage.tsx         # 系统设置 (调试模式 / 无头模式 / 默认接码提供商)
 ├── components/
@@ -76,8 +79,11 @@ frontend/src/
 │   └── MainLayout.tsx           # 主布局 (侧边栏 + 内容区)
 ├── types/
 │   └── index.ts                 # TypeScript 类型定义
-└── utils/
-    └── mask.ts                  # 邮箱脱敏工具
+├── utils/
+│   ├── http.ts                  # HTTP 错误消息提取
+│   └── mask.ts                  # 邮箱脱敏工具
+└── hooks/
+    └── useAutomationWs.ts       # 自动化 WebSocket hook
 ```
 
 ## 环境变量
