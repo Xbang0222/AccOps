@@ -16,7 +16,7 @@ import {
 } from 'antd';
 import {
   BugOutlined,
-  CameraOutlined,
+  PictureOutlined,
   FileTextOutlined,
   EyeInvisibleOutlined,
   PhoneOutlined,
@@ -129,7 +129,7 @@ const SettingsPage: React.FC = () => {
 
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           <Text type="secondary">
-            <CameraOutlined style={{ marginRight: 6 }} />
+            <PictureOutlined style={{ marginRight: 6 }} />
             开启后每个步骤自动截图保存 (失败时无论是否开启都会截图)
           </Text>
           <Text type="secondary">

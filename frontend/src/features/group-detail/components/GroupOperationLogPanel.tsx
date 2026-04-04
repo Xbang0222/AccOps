@@ -1,4 +1,5 @@
 import { Button, Flex, Tag, Typography } from 'antd'
+import { theme as antTheme } from 'antd'
 import { GoogleOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons'
 
 import type { Account } from '@/types'
@@ -17,19 +18,20 @@ export function GroupOperationLogPanel({
   opState,
   onCancel,
 }: GroupOperationLogPanelProps) {
+  const { token } = antTheme.useToken()
   return (
     <div
       style={{
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        border: '1px solid #f0f0f0',
+        border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: 8,
-        background: '#fff',
+        background: token.colorBgContainer,
         minHeight: 0,
       }}
     >
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
+      <div style={{ padding: '8px 12px', borderBottom: `1px solid ${token.colorBorderSecondary}`, flexShrink: 0 }}>
         {account ? (
           <Flex align="center" gap={6}>
             <GoogleOutlined style={{ color: '#4285f4', fontSize: 14 }} />
@@ -76,7 +78,7 @@ export function GroupOperationLogPanel({
                           ? '#52c41a'
                           : step.status === 'skip'
                             ? '#faad14'
-                            : '#333',
+                            : token.colorText,
                     fontWeight: 500,
                   }}
                 >
@@ -94,10 +96,10 @@ export function GroupOperationLogPanel({
                       {step.message.length > 60 ? `${step.message.slice(0, 60)}...` : step.message}
                     </a>
                   ) : (
-                    <span style={{ color: '#999', marginLeft: 8 }}>{step.message}</span>
+                    <span style={{ color: token.colorTextTertiary, marginLeft: 8 }}>{step.message}</span>
                   )
                 ) : null}
-                {step.duration_ms ? <span style={{ color: '#bbb', marginLeft: 6 }}>({step.duration_ms}ms)</span> : null}
+                {step.duration_ms ? <span style={{ color: token.colorTextQuaternary, marginLeft: 6 }}>({step.duration_ms}ms)</span> : null}
               </div>
             ))}
 
@@ -108,8 +110,8 @@ export function GroupOperationLogPanel({
                   padding: '6px 10px',
                   borderRadius: 6,
                   fontSize: 12,
-                  background: opState.resultSuccess ? '#f6ffed' : '#fff2f0',
-                  border: `1px solid ${opState.resultSuccess ? '#b7eb8f' : '#ffa39e'}`,
+                  background: opState.resultSuccess ? token.colorSuccessBg : token.colorErrorBg,
+                  border: `1px solid ${opState.resultSuccess ? token.colorSuccessBorder : token.colorErrorBorder}`,
                 }}
               >
                 {opState.resultMsg}

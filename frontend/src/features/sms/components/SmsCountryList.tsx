@@ -1,4 +1,4 @@
-import { Button, Empty, Flex, Input, Spin, Tag, Tooltip, Typography } from 'antd'
+import { Button, Empty, Flex, Input, Spin, Tag, Tooltip, Typography, theme as antTheme } from 'antd'
 import { LoadingOutlined, SearchOutlined, SettingOutlined, ShoppingCartOutlined } from '@ant-design/icons'
 
 import type { SmsCountryPrice } from '@/api/sms'
@@ -32,6 +32,7 @@ export function SmsCountryList({
   onChangeSortBy,
   onOpenConfig,
 }: SmsCountryListProps) {
+  const { token } = antTheme.useToken()
   return (
     <div style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Flex align="center" gap={8} style={{ marginBottom: 8 }}>
@@ -46,13 +47,13 @@ export function SmsCountryList({
         />
         <Flex gap={4}>
           <Text
-            style={{ fontSize: 11, cursor: 'pointer', color: countrySortBy === 'count' ? '#1677ff' : '#999', whiteSpace: 'nowrap' }}
+            style={{ fontSize: 11, cursor: 'pointer', color: countrySortBy === 'count' ? token.colorPrimary : token.colorTextTertiary, whiteSpace: 'nowrap' }}
             onClick={() => onChangeSortBy('count')}
           >
             数量↓
           </Text>
           <Text
-            style={{ fontSize: 11, cursor: 'pointer', color: countrySortBy === 'price' ? '#1677ff' : '#999', whiteSpace: 'nowrap' }}
+            style={{ fontSize: 11, cursor: 'pointer', color: countrySortBy === 'price' ? token.colorPrimary : token.colorTextTertiary, whiteSpace: 'nowrap' }}
             onClick={() => onChangeSortBy('price')}
           >
             价格↑
@@ -63,7 +64,7 @@ export function SmsCountryList({
         </Tooltip>
       </Flex>
 
-      <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8, background: '#fff' }}>
+      <div style={{ flex: 1, overflowY: 'auto', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, background: token.colorBgContainer }}>
         {!activeProviderApiKey ? (
           <Empty description="请先配置提供商" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ marginTop: 40 }} />
         ) : countryLoading ? (
@@ -80,12 +81,12 @@ export function SmsCountryList({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                borderBottom: '1px solid #f5f5f5',
+                borderBottom: `1px solid ${token.colorBorderSecondary}`,
                 cursor: 'pointer',
                 transition: 'background 0.15s',
               }}
               onMouseEnter={(event) => {
-                event.currentTarget.style.background = '#e6f4ff'
+                event.currentTarget.style.background = token.colorPrimaryBg
               }}
               onMouseLeave={(event) => {
                 event.currentTarget.style.background = 'transparent'

@@ -6,10 +6,13 @@ import { RouterProvider } from 'react-router-dom'
 import LoginPage from '@/pages/LoginPage'
 import { createRouter } from '@/router'
 import '@/styles/global.css'
-import theme from '@/theme'
+import { getThemeConfig } from '@/theme'
+import { ThemeProvider, useThemeMode } from '@/hooks/useThemeMode'
 
-const App: React.FC = () => {
+function AppInner() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
+  const { isDark } = useThemeMode()
+  const themeConfig = useMemo(() => getThemeConfig(isDark), [isDark])
 
   const handleLoginSuccess = useCallback((newToken: string) => {
     setToken(newToken)
@@ -24,7 +27,7 @@ const App: React.FC = () => {
   const router = useMemo(() => createRouter(handleLogout), [handleLogout])
 
   return (
-    <ConfigProvider locale={zhCN} theme={theme}>
+    <ConfigProvider locale={zhCN} theme={themeConfig}>
       <AntApp>
         {token ? (
           <RouterProvider router={router} />
@@ -35,5 +38,11 @@ const App: React.FC = () => {
     </ConfigProvider>
   )
 }
+
+const App: React.FC = () => (
+  <ThemeProvider>
+    <AppInner />
+  </ThemeProvider>
+)
 
 export default App

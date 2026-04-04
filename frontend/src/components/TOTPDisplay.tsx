@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Typography, Progress, message, Tooltip, Flex } from 'antd';
+import { Typography, Progress, message, Tooltip, Flex, theme as antTheme } from 'antd';
 import { generateTOTP } from '@/utils/totp';
 
 const { Text } = Typography;
@@ -9,6 +9,7 @@ interface TOTPDisplayProps {
 }
 
 const TOTPDisplay: React.FC<TOTPDisplayProps> = ({ secret }) => {
+  const { token } = antTheme.useToken();
   const [totp, setTotp] = useState({ code: '------', remaining: 30, formatted: '--- ---' });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -44,7 +45,7 @@ const TOTPDisplay: React.FC<TOTPDisplayProps> = ({ secret }) => {
           percent={percent}
           size={22}
           strokeColor={color}
-          trailColor="#f0f0f0"
+          trailColor={token.colorBorderSecondary}
           format={() => ''}
           strokeWidth={4}
         />

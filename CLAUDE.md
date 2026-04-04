@@ -257,7 +257,40 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 ## 开发指引
 
-- 后端启动: `cd backend && uv run python run.py --reload`
-- 前端启动: `cd frontend && pnpm dev`
-- API 文档: http://localhost:8000/docs
-- 前端地址: http://localhost:5173
+### 启动项目
+
+启动前先杀占用端口的残留进程，再启动服务：
+
+```bash
+# 1. 杀端口 (后端 8000 + 前端 5173)
+lsof -ti:8000 | xargs kill -9 2>/dev/null
+lsof -ti:5173 | xargs kill -9 2>/dev/null
+
+# 2. 启动后端 (热重载)
+cd backend && uv run python run.py --reload
+
+# 3. 启动前端 (另一个终端)
+cd frontend && pnpm dev
+```
+
+### 服务地址
+
+| 服务 | 地址 |
+|------|------|
+| 后端 API | http://localhost:8000 |
+| API 文档 (Swagger) | http://localhost:8000/docs |
+| 前端 | http://localhost:5173 |
+
+### 端口说明
+
+| 端口 | 用途 |
+|------|------|
+| `8000` | FastAPI 后端 (Uvicorn) |
+| `5173` | Vite 前端开发服务器 |
+| `5432` | PostgreSQL 数据库 |
+
+### 注意事项
+
+- `--reload` 模式使用 StatReload，主进程和子进程共享端口 fd，**重启前务必先杀端口**，否则会报 `Address already in use`
+- Google 自动登录强制 `headless=False`，服务器环境需配合 Xvfb
+- 数据库迁移在应用启动时通过 Alembic 自动执行

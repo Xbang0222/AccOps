@@ -10,7 +10,7 @@ import {
   Progress,
 } from 'antd';
 import {
-  UserOutlined,
+  ContactsOutlined,
   TeamOutlined,
   TagOutlined,
   ClockCircleOutlined,
@@ -61,7 +61,7 @@ const DashboardPage: React.FC = () => {
           <Statistic
             title="总账号数"
             value={stats?.total_accounts ?? 0}
-            prefix={<UserOutlined style={{ color: '#4285f4' }} />}
+            prefix={<ContactsOutlined style={{ color: '#4285f4' }} />}
           />
         </Card>
         <Card loading={loading} style={{ flex: 1, minWidth: 200 }} hoverable>

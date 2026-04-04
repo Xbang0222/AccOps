@@ -1,13 +1,5 @@
 import React from 'react'
-import {
-  Button,
-  Card,
-  Dropdown,
-  Flex,
-  Tag,
-  Tooltip,
-  Typography,
-} from 'antd'
+import { Button, Card, Dropdown, Flex, Tag, Tooltip, Typography, theme as antTheme } from 'antd'
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -83,6 +75,7 @@ export function GroupAccountCard({
   onSelect,
   onToggleBrowser,
 }: GroupAccountCardProps) {
+  const { token } = antTheme.useToken()
   const isPending = Boolean(account.is_family_pending)
   const visibleOps = isPending ? [] : getVisibleAutomationOperations(account)
   const isThisAccountRunning = Boolean(opState?.runningOpKey)
@@ -108,7 +101,7 @@ export function GroupAccountCard({
                 ? '1px solid #ffd666'
                 : isRunning
                   ? '1px solid #91caff'
-                  : '1px solid #f0f0f0',
+                  : `1px solid ${token.colorBorderSecondary}`,
           transition: 'all 0.2s',
           opacity: isPending ? 0.8 : 1,
         }}

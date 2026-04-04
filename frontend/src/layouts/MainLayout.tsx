@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, Typography, Tooltip } from 'antd';
+import { Layout, Menu, Button, Typography, Tooltip, Segmented } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   SafetyCertificateOutlined,
   DashboardOutlined,
-  AppstoreOutlined,
+  IdcardOutlined,
   TeamOutlined,
   LogoutOutlined,
   SettingOutlined,
   PhoneOutlined,
+  DesktopOutlined,
+  SunOutlined,
+  MoonOutlined,
 } from '@ant-design/icons';
+import { theme as antTheme } from 'antd';
+import { useThemeMode, type ThemeMode } from '@/hooks/useThemeMode';
 import './MainLayout.css';
 
 const { Header, Sider, Content } = Layout;
@@ -20,31 +25,11 @@ interface MainLayoutProps {
 }
 
 const menuItems = [
-  {
-    key: 'dashboard',
-    icon: <DashboardOutlined />,
-    label: '仪表盘',
-  },
-  {
-    key: 'accounts',
-    icon: <AppstoreOutlined />,
-    label: '账号管理',
-  },
-  {
-    key: 'groups',
-    icon: <TeamOutlined />,
-    label: '分组管理',
-  },
-  {
-    key: 'sms',
-    icon: <PhoneOutlined />,
-    label: '接码管理',
-  },
-  {
-    key: 'settings',
-    icon: <SettingOutlined />,
-    label: '系统设置',
-  },
+  { key: 'dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
+  { key: 'accounts', icon: <IdcardOutlined />, label: '账号管理' },
+  { key: 'groups', icon: <TeamOutlined />, label: '分组管理' },
+  { key: 'sms', icon: <PhoneOutlined />, label: '接码管理' },
+  { key: 'settings', icon: <SettingOutlined />, label: '系统设置' },
 ];
 
 const pageTitles: Record<string, string> = {
@@ -63,23 +48,29 @@ const menuKeyToPath: Record<string, string> = {
   settings: '/settings',
 };
 
+const themeModeOptions = [
+  { label: <DesktopOutlined />, value: 'system' },
+  { label: <SunOutlined />, value: 'light' },
+  { label: <MoonOutlined />, value: 'dark' },
+];
+
 const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { token: themeToken } = antTheme.useToken();
+  const { mode, isDark, setMode } = useThemeMode();
 
-  // Derive selected menu key from current path
-  // e.g. /groups/123 → 'groups', /dashboard → 'dashboard'
   const pathSegment = location.pathname.split('/')[1] || 'dashboard';
   const selectedKey = Object.keys(menuKeyToPath).includes(pathSegment) ? pathSegment : 'dashboard';
   const pageTitle = pageTitles[selectedKey] || '仪表盘';
 
   const handleMenuClick = ({ key }: { key: string }) => {
     const path = menuKeyToPath[key];
-    if (path) {
-      navigate(path);
-    }
+    if (path) navigate(path);
   };
+
+  const borderColor = themeToken.colorBorderSecondary;
 
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
@@ -87,16 +78,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        theme="light"
+        theme={isDark ? 'dark' : 'light'}
         width={200}
         style={{
-          borderRight: '1px solid #f0f0f0',
-          boxShadow: '2px 0 8px rgba(0,0,0,0.02)',
+          borderRight: `1px solid ${borderColor}`,
           height: '100vh',
           overflow: 'auto',
         }}
       >
-        <div className="logo-header">
+        <div className="logo-header" style={{ borderBottomColor: borderColor }}>
           <div className="logo-dot">
             <SafetyCertificateOutlined style={{ fontSize: 16, color: '#fff' }} />
           </div>
@@ -117,19 +107,31 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
       </Sider>
 
       <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-        <Header className="main-header">
+        <Header
+          className="main-header"
+          style={{
+            background: themeToken.colorBgContainer,
+            borderBottomColor: borderColor,
+          }}
+        >
           <div className="header-left">
             <Text strong style={{ fontSize: 16 }}>
               {pageTitle}
             </Text>
           </div>
           <div className="header-right">
+            <Segmented
+              size="small"
+              options={themeModeOptions}
+              value={mode}
+              onChange={(v) => setMode(v as ThemeMode)}
+            />
             <Tooltip title="退出登录">
               <Button
                 type="text"
                 icon={<LogoutOutlined />}
                 onClick={onLogout}
-                style={{ color: '#999' }}
+                style={{ color: themeToken.colorTextTertiary }}
               >
                 退出
               </Button>
@@ -138,7 +140,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
         </Header>
 
         <Content className="content-wrapper">
-          <div className="site-layout-content">
+          <div
+            className="site-layout-content"
+            style={{
+              background: themeToken.colorBgContainer,
+              boxShadow: isDark
+                ? '0 1px 4px rgba(0, 0, 0, 0.2)'
+                : '0 1px 4px rgba(0, 0, 0, 0.04)',
+            }}
+          >
             <Outlet />
           </div>
         </Content>

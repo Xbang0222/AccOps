@@ -17,6 +17,7 @@ import {
   Col,
   Tooltip,
 } from 'antd';
+import { theme as antTheme } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
@@ -47,6 +48,7 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 const GroupManagePage: React.FC = () => {
+  const { token } = antTheme.useToken();
   const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -207,7 +209,7 @@ const GroupManagePage: React.FC = () => {
                       onClick={() => navigate(`/groups/${group.id}`)}
                       style={{
                         borderRadius: 12,
-                        border: '1px solid #f0f0f0',
+                        border: `1px solid ${token.colorBorderSecondary}`,
                         transition: 'all 0.2s',
                         height: '100%',
                         cursor: 'pointer',

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, type SyntheticEvent } from 'react';
 import {
   Button,
   Input,
@@ -11,6 +11,7 @@ import {
   App,
   Typography,
 } from 'antd';
+import type { ResizeCallbackData } from 'react-resizable';
 import {
   PlusOutlined,
   SearchOutlined,
@@ -40,6 +41,7 @@ import {
 import type { Account } from '@/types';
 import { getErrorMessage } from '@/utils/http';
 import AccountModal from '@/components/AccountModal';
+import ResizableTitle from '@/components/ResizableTitle';
 import { generateTOTP } from '@/utils/totp';
 import { useAutomationWs } from '@/hooks/useAutomationWs';
 
@@ -208,7 +210,7 @@ const AccountsPage: React.FC = () => {
     } finally { setImportLoading(false); }
   };
 
-  const columns = createAccountTableColumns({
+  const baseColumns = createAccountTableColumns({
     browserLoading,
     browserRunning,
     masked,
@@ -220,6 +222,40 @@ const AccountsPage: React.FC = () => {
     onLaunchAndLogin: handleLaunchAndLogin,
     onStopBrowser: handleStopBrowser,
   });
+
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    const widths: Record<string, number> = {};
+    for (const col of baseColumns) {
+      const key = (col as { key?: string }).key;
+      const width = (col as { width?: number }).width;
+      if (key && width) {
+        widths[key] = width;
+      }
+    }
+    return widths;
+  });
+
+  const handleColumnResize = (key: string) =>
+    (_e: SyntheticEvent, { size }: ResizeCallbackData) => {
+      setColumnWidths((prev) => ({ ...prev, [key]: size.width }));
+    };
+
+  const columns = baseColumns.map((col) => {
+    const key = (col as { key?: string }).key;
+    if (!key || !columnWidths[key]) return col;
+    return {
+      ...col,
+      width: columnWidths[key],
+      onHeaderCell: () => ({
+        width: columnWidths[key],
+        onResize: handleColumnResize(key),
+      }),
+    };
+  });
+
+  const tableComponents = {
+    header: { cell: ResizableTitle },
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -268,12 +304,13 @@ const AccountsPage: React.FC = () => {
       {/* 表格 */}
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <Table<Account>
+          components={tableComponents}
           columns={columns}
           dataSource={accounts}
           rowKey="id"
           loading={loading}
           size="small"
-          scroll={{ x: 800, y: 'calc(100vh - 260px)' }}
+          scroll={{ x: 1100, y: 'calc(100vh - 260px)' }}
           pagination={false}
         />
       </div>

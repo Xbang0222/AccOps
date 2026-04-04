@@ -63,6 +63,7 @@ export function createAccountTableColumns({
       title: '邮箱',
       dataIndex: 'email',
       key: 'email',
+      width: 280,
       ellipsis: true,
       render: (email: string, record) => (
         <Flex align="center" gap={6}>

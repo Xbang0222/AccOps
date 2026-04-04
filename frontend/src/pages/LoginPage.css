@@ -54,6 +54,13 @@
   z-index: 1;
 }
 
+[data-theme='dark'] .login-box {
+  background: rgba(30, 30, 30, 0.92);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
 @keyframes cardFloat {
   from {
     opacity: 0;
@@ -94,5 +101,9 @@
   margin-top: 8px;
   padding: 12px 0 0;
   text-align: center;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='dark'] .login-footer {
+  border-top-color: rgba(255, 255, 255, 0.1);
 }
