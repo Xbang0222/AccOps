@@ -389,7 +389,8 @@ def _try_click_consent_buttons(page) -> bool:
 # ── 浏览器自动 OAuth (核心) ─────────────────────────────
 
 
-def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = ""):
+def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
+               cancel_token=None):
     """用已登录的浏览器自动完成 OAuth 授权流程
 
     Args:
@@ -401,7 +402,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = ""):
     Returns:
         AutomationResult
     """
-    from services.automation import StepTracker, AutomationResult
+    from services.automation import StepTracker, AutomationResult, CancelledError
 
     tracker = StepTracker("oauth", on_step)
 
@@ -437,6 +438,8 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = ""):
         totp_handled = False
 
         for tick in range(max_wait):
+            if cancel_token:
+                cancel_token.check()
             current_url = page.url
 
             # 1) 检查是否已经回调 (拿到 code)
@@ -552,7 +555,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = ""):
 
                     # Step 8: 自动手机号验证
                     tracker.step("自动接码验证", "info", "开始自动验证...")
-                    verify_result = auto_phone_verify_sync(page, validation_url, on_step)
+                    verify_result = auto_phone_verify_sync(page, validation_url, on_step, cancel_token=cancel_token)
                     if verify_result.get("success"):
                         tracker.step("自动接码验证", "ok", verify_result.get("message", ""))
                         # 保存最终页面信息
@@ -582,7 +585,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = ""):
 
 # ── 自动手机号验证 ─────────────────────────────────────
 
-def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
+def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token=None) -> dict:
     """用已登录浏览器自动完成 Google 手机号验证
 
     流程:
@@ -627,6 +630,8 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
             tracker.step("接码配置", "ok", f"{provider.name} | 服务={service} 国家={country}")
 
         # Step 2: 打开验证页面
+        if cancel_token:
+            cancel_token.check()
         tracker.step("打开验证页面", "info")
         page.get(validation_url)
         time.sleep(5)
@@ -646,6 +651,8 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
             tracker.step("选择验证方式", "ok")
 
         # Step 4: 购买号码
+        if cancel_token:
+            cancel_token.check()
         tracker.step("购买号码", "info", f"服务={service} 国家={country}")
         ok, number_data = sms_api.get_number(service=service, country=country)
         if not ok:
@@ -693,6 +700,8 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
             return tracker.result(False, f"号码被拒绝: {phone_number}", step="phone_rejected")
 
         # Step 6: 等待验证码
+        if cancel_token:
+            cancel_token.check()
         tracker.step("等待验证码", "info", f"轮询中 (activation={activation_id})")
         code_ok, code, sms_text = sms_api.wait_for_code(activation_id, timeout=SMS_WAIT_TIMEOUT, interval=SMS_POLL_INTERVAL)
         if not code_ok:
@@ -701,6 +710,8 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None) -> dict:
         tracker.step("收到验证码", "ok", code)
 
         # Step 7: 输入验证码
+        if cancel_token:
+            cancel_token.check()
         tracker.step("输入验证码", "info", code)
 
         # 查找验证码输入框 (Google 用 #idvAnyPhonePin)

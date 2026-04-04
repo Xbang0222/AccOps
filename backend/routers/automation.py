@@ -25,6 +25,8 @@ from services.automation import (
     run_discover_family_group,
     discover_family_by_cookies,
     run_oauth,
+    CancellationToken,
+    CancelledError,
 )
 from core.constants import (
     ACTION_LOGIN,
@@ -721,6 +723,8 @@ async def automation_websocket(ws: WebSocket):
     await ws.accept()
     logger.info("WebSocket automation client connected")
 
+    cancel_token = CancellationToken()
+
     try:
         while True:
             raw = await ws.receive_text()
@@ -767,6 +771,7 @@ async def automation_websocket(ws: WebSocket):
 
             # 用 queue 实现线程安全的步骤推送
             msg_queue: queue.Queue = queue.Queue()
+            cancel_token = CancellationToken()
 
             def on_step(step_data: dict):
                 msg_queue.put(step_data)
@@ -775,11 +780,11 @@ async def automation_websocket(ws: WebSocket):
             task = None
             if action == ACTION_LOGIN:
                 task = asyncio.ensure_future(
-                    run_auto_login(profile_id, email, password, totp_secret, recovery_email, verification_url, on_step=on_step)
+                    run_auto_login(profile_id, email, password, totp_secret, recovery_email, verification_url, on_step=on_step, cancel_token=cancel_token)
                 )
             elif action == ACTION_FAMILY_CREATE:
                 task = asyncio.ensure_future(
-                    run_create_family_group(profile_id, on_step=on_step)
+                    run_create_family_group(profile_id, on_step=on_step, cancel_token=cancel_token)
                 )
             elif action == ACTION_FAMILY_INVITE:
                 invite_email = data.get("invite_email", "")
@@ -787,7 +792,7 @@ async def automation_websocket(ws: WebSocket):
                     await ws.send_json({"type": "error", "message": "缺少 invite_email"})
                     continue
                 task = asyncio.ensure_future(
-                    run_send_family_invite(profile_id, invite_email, on_step=on_step)
+                    run_send_family_invite(profile_id, invite_email, on_step=on_step, cancel_token=cancel_token)
                 )
             elif action == ACTION_FAMILY_BATCH_INVITE:
                 invite_emails_raw = data.get("invite_emails", "")
@@ -810,7 +815,7 @@ async def automation_websocket(ws: WebSocket):
                     on_step_batch({"type": "step", "name": f"--- 邀请 {invite_email} ({i+1}/{total}) ---", "status": "info", "message": invite_email})
 
                     task = asyncio.ensure_future(
-                        run_send_family_invite(profile_id, invite_email, on_step=on_step_batch)
+                        run_send_family_invite(profile_id, invite_email, on_step=on_step_batch, cancel_token=cancel_token)
                     )
                     # drain queue while task runs
                     while not task.done():
@@ -842,7 +847,7 @@ async def automation_websocket(ws: WebSocket):
                 continue
             elif action == ACTION_FAMILY_ACCEPT:
                 task = asyncio.ensure_future(
-                    run_accept_family_invite(profile_id, on_step=on_step)
+                    run_accept_family_invite(profile_id, on_step=on_step, cancel_token=cancel_token)
                 )
             elif action == ACTION_FAMILY_REMOVE:
                 member_email = data.get("member_email", "")
@@ -850,7 +855,7 @@ async def automation_websocket(ws: WebSocket):
                     await ws.send_json({"type": "error", "message": "缺少 member_email"})
                     continue
                 task = asyncio.ensure_future(
-                    run_remove_family_member(profile_id, member_email, password, totp_secret, on_step=on_step)
+                    run_remove_family_member(profile_id, member_email, password, totp_secret, on_step=on_step, cancel_token=cancel_token)
                 )
             elif action == ACTION_FAMILY_BATCH_REMOVE:
                 member_emails_raw = data.get("member_emails", "")
@@ -873,7 +878,7 @@ async def automation_websocket(ws: WebSocket):
                     on_step_batch({"type": "step", "name": f"--- 移除 {member_email} ({i+1}/{total}) ---", "status": "info", "message": member_email})
 
                     task = asyncio.ensure_future(
-                        run_remove_family_member(profile_id, member_email, password, totp_secret, on_step=on_step_batch)
+                        run_remove_family_member(profile_id, member_email, password, totp_secret, on_step=on_step_batch, cancel_token=cancel_token)
                     )
                     while not task.done():
                         try:
@@ -903,7 +908,7 @@ async def automation_websocket(ws: WebSocket):
                 continue
             elif action == ACTION_FAMILY_LEAVE:
                 task = asyncio.ensure_future(
-                    run_leave_family_group(profile_id, password, totp_secret, on_step=on_step)
+                    run_leave_family_group(profile_id, password, totp_secret, on_step=on_step, cancel_token=cancel_token)
                 )
             elif action == ACTION_FAMILY_DISCOVER:
                 # 发现家庭组关系 → cookies 过期自动登录刷新
@@ -937,7 +942,7 @@ async def automation_websocket(ws: WebSocket):
                 continue
             elif action == ACTION_OAUTH:
                 task = asyncio.ensure_future(
-                    run_oauth(profile_id, on_step=on_step, password=password, totp_secret=totp_secret)
+                    run_oauth(profile_id, on_step=on_step, password=password, totp_secret=totp_secret, cancel_token=cancel_token)
                 )
             elif action == ACTION_PHONE_VERIFY:
                 validation_url = data.get("validation_url", "")
@@ -947,7 +952,7 @@ async def automation_websocket(ws: WebSocket):
                 from services.oauth import auto_phone_verify_sync
                 loop = asyncio.get_event_loop()
                 task = asyncio.ensure_future(
-                    loop.run_in_executor(None, auto_phone_verify_sync, page, validation_url, on_step)
+                    loop.run_in_executor(None, lambda: auto_phone_verify_sync(page, validation_url, on_step, cancel_token=cancel_token))
                 )
             elif action == ACTION_FAMILY_REPLACE:
                 old_email = data.get("old_email", "")
@@ -965,6 +970,7 @@ async def automation_websocket(ws: WebSocket):
                     msg_queue.put(data)
 
                 # 辅助: 转发子操作步骤消息, 过滤掉子操作的 result 消息 (避免前端提前关闭 WS)
+                # 同时监听前端取消命令
                 async def _drain_queue(tsk, mq):
                     while not tsk.done():
                         try:
@@ -972,7 +978,21 @@ async def automation_websocket(ws: WebSocket):
                             if m.get("type") != "result":
                                 await ws.send_json(m)
                         except queue.Empty:
-                            await asyncio.sleep(0.1)
+                            pass
+
+                        # Check for cancel command from frontend (non-blocking)
+                        try:
+                            raw_cancel = await asyncio.wait_for(ws.receive_text(), timeout=0.1)
+                            incoming = json.loads(raw_cancel)
+                            if incoming.get("action") == "cancel":
+                                cancel_token.cancel()
+                                await ws.send_json({"type": "step", "name": "取消操作", "status": "info", "message": "正在取消..."})
+                        except asyncio.TimeoutError:
+                            pass
+                        except WebSocketDisconnect:
+                            cancel_token.cancel()
+                            return
+
                     while not mq.empty():
                         m = mq.get_nowait()
                         if m.get("type") != "result":
@@ -982,7 +1002,7 @@ async def automation_websocket(ws: WebSocket):
                 step_offset[0] = 0
                 on_step_replace({"type": "step", "name": PHASE_REMOVE_OLD, "status": "info", "message": old_email})
                 task = asyncio.ensure_future(
-                    run_remove_family_member(profile_id, old_email, password, totp_secret, on_step=on_step_replace)
+                    run_remove_family_member(profile_id, old_email, password, totp_secret, on_step=on_step_replace, cancel_token=cancel_token)
                 )
                 await _drain_queue(task, msg_queue)
 
@@ -1000,7 +1020,7 @@ async def automation_websocket(ws: WebSocket):
                 step_offset[0] = 100
                 on_step_replace({"type": "step", "name": PHASE_INVITE_NEW, "status": "info", "message": new_email})
                 task = asyncio.ensure_future(
-                    run_send_family_invite(profile_id, new_email, on_step=on_step_replace)
+                    run_send_family_invite(profile_id, new_email, on_step=on_step_replace, cancel_token=cancel_token)
                 )
                 await _drain_queue(task, msg_queue)
 
@@ -1071,7 +1091,7 @@ async def automation_websocket(ws: WebSocket):
                         new_verify_url = extract_verification_link(new_account.notes or "") or ""
                         new_recovery_email = _decrypt(new_account.recovery_email) or ""
                     task = asyncio.ensure_future(
-                        run_auto_login(new_profile.id, new_email_db, new_pwd, new_totp, new_recovery_email, new_verify_url, on_step=on_step_replace)
+                        run_auto_login(new_profile.id, new_email_db, new_pwd, new_totp, new_recovery_email, new_verify_url, on_step=on_step_replace, cancel_token=cancel_token)
                     )
                     await _drain_queue(task, msg_queue)
 
@@ -1085,7 +1105,7 @@ async def automation_websocket(ws: WebSocket):
                 step_offset[0] = 400
                 on_step_replace({"type": "step", "name": PHASE_ACCEPT_INVITE, "status": "info", "message": new_email})
                 task = asyncio.ensure_future(
-                    run_accept_family_invite(new_profile.id, on_step=on_step_replace)
+                    run_accept_family_invite(new_profile.id, on_step=on_step_replace, cancel_token=cancel_token)
                 )
                 await _drain_queue(task, msg_queue)
 
@@ -1110,13 +1130,27 @@ async def automation_websocket(ws: WebSocket):
                 await ws.send_json({"type": "error", "message": f"未知操作: {action}"})
                 continue
 
-            # 实时转发步骤消息，直到任务完成
+            # 实时转发步骤消息，同时监听前端取消命令
             while not task.done():
+                # Forward step messages
                 try:
                     msg = msg_queue.get_nowait()
                     await ws.send_json(msg)
                 except queue.Empty:
-                    await asyncio.sleep(0.1)
+                    pass
+
+                # Check for cancel command from frontend (non-blocking)
+                try:
+                    raw_cancel = await asyncio.wait_for(ws.receive_text(), timeout=0.1)
+                    incoming = json.loads(raw_cancel)
+                    if incoming.get("action") == "cancel":
+                        cancel_token.cancel()
+                        await ws.send_json({"type": "step", "name": "取消操作", "status": "info", "message": "正在取消..."})
+                except asyncio.TimeoutError:
+                    pass
+                except WebSocketDisconnect:
+                    cancel_token.cancel()
+                    return
 
             # 发送队列中剩余消息
             while not msg_queue.empty():
@@ -1125,12 +1159,21 @@ async def automation_websocket(ws: WebSocket):
 
             # 检查任务异常
             if task.exception():
-                await ws.send_json({
-                    "type": "result",
-                    "success": False,
-                    "message": f"操作异常: {task.exception()}",
-                    "duration_ms": 0,
-                })
+                exc = task.exception()
+                if isinstance(exc, CancelledError):
+                    await ws.send_json({
+                        "type": "result",
+                        "success": False,
+                        "message": "操作已取消",
+                        "duration_ms": 0,
+                    })
+                else:
+                    await ws.send_json({
+                        "type": "result",
+                        "success": False,
+                        "message": f"操作异常: {exc}",
+                        "duration_ms": 0,
+                    })
             else:
                 # 操作完成后自动同步分组
                 result = task.result()
@@ -1155,6 +1198,10 @@ async def automation_websocket(ws: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("WebSocket automation client disconnected")
+        try:
+            cancel_token.cancel()
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         try:

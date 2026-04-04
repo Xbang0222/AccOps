@@ -28,6 +28,7 @@ import {
   ArrowLeftOutlined,
   PoweroffOutlined,
   SyncOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import type { Account } from '@/types';
 import { discoverFamily } from '@/api';
@@ -198,6 +199,7 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
   });
 
   const { runningOp, steps, resultMsg } = ws;
+  const { cancel } = ws;
 
   // 自动滚动到最新步骤
   useEffect(() => {
@@ -512,6 +514,18 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
             lineHeight: '22px',
           }}
         >
+          {runningOp && (
+            <Flex justify="flex-end" style={{ marginBottom: 8 }}>
+              <Button
+                size="small"
+                danger
+                icon={<StopOutlined />}
+                onClick={() => cancel()}
+              >
+                取消
+              </Button>
+            </Flex>
+          )}
           {steps.map((s, i) => (
             <div key={i} style={{ minWidth: 0 }}>
                 <span

@@ -255,12 +255,14 @@ browser_manager = BrowserManager()
 
 
 def login_sync(page, email: str, password: str, totp_secret: str = "",
-               recovery_email: str = "") -> bool:
+               recovery_email: str = "", cancel_token=None) -> bool:
     """DrissionPage 同步登录 Google 账号
 
     Returns: True = 登录成功
     """
     # 先检测是否已登录 (user-data-dir 保留了上次会话)
+    if cancel_token:
+        cancel_token.check()
     page.get("https://myaccount.google.com/")
     time.sleep(3)
     url = page.url
@@ -274,6 +276,8 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         else:
             logger.info(f"浏览器已登录其他账号, 继续登录 {email}")
 
+    if cancel_token:
+        cancel_token.check()
     page.get("https://accounts.google.com/signin")
     time.sleep(2)
 
@@ -300,6 +304,8 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
     time.sleep(3)
 
     # 密码
+    if cancel_token:
+        cancel_token.check()
     time.sleep(2)
     if not enter_password(page, password, timeout=15):
         logger.error("找不到密码输入框")
@@ -314,6 +320,8 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
 
     # 处理登录后的中间页 (passkey 引导、恢复选项提示等)
     for _ in range(3):
+        if cancel_token:
+            cancel_token.check()
         url = page.url
         if "speedbump" in url or "passkeyenrollment" in url or "signinoptions" in url:
             # 点击 "以后再说" / "Not now" / "Skip" 跳过

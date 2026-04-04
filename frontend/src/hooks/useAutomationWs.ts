@@ -26,6 +26,8 @@ export interface AutomationWsResult {
   resultSuccess: boolean | null;
   /** 发送自动化命令 */
   execute: (accountId: number, action: string, extra?: Record<string, string>, opKey?: string) => void;
+  /** 取消当前操作 */
+  cancel: () => void;
 }
 
 interface UseAutomationWsOptions {
@@ -142,5 +144,11 @@ export function useAutomationWs(options: UseAutomationWsOptions = {}): Automatio
     [onSuccess, onFail, onError],
   );
 
-  return { runningOp, steps, resultMsg, resultSuccess, execute };
+  const cancel = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ action: 'cancel' }));
+    }
+  }, []);
+
+  return { runningOp, steps, resultMsg, resultSuccess, execute, cancel };
 }

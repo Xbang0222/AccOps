@@ -7,6 +7,7 @@
 
 import asyncio
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18,6 +19,34 @@ from services.family_api import FamilyAPI, NoInvitationError, TokenError, RPCErr
 from core.constants import FAMILY_ROLE_ADMIN
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# 取消支持
+# ============================================================
+
+class CancelledError(Exception):
+    """Raised when an automation operation is cancelled by the user."""
+    pass
+
+
+class CancellationToken:
+    """Thread-safe cancellation token for aborting automation operations."""
+    def __init__(self):
+        self._cancelled = threading.Event()
+
+    def cancel(self):
+        self._cancelled.set()
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancelled.is_set()
+
+    def check(self):
+        """Raise CancelledError if cancelled."""
+        if self._cancelled.is_set():
+            raise CancelledError("操作已被用户取消")
+
 
 SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent / ".automation_logs"
 
@@ -158,12 +187,14 @@ class AutomationResult:
 
 def auto_login_sync(page, email: str, password: str, totp_secret: str = "",
                     recovery_email: str = "", verification_url: str = "",
-                    on_step=None) -> AutomationResult:
+                    on_step=None, cancel_token=None) -> AutomationResult:
     """自动登录 Google 账号"""
     tracker = StepTracker("login", on_step)
 
     tracker.step("打开登录页", "info", "accounts.google.com")
-    ok = login_sync(page, email, password, totp_secret, recovery_email)
+    if cancel_token:
+        cancel_token.check()
+    ok = login_sync(page, email, password, totp_secret, recovery_email, cancel_token=cancel_token)
 
     if ok:
         return tracker.result(True, f"登录成功: {email}")
@@ -738,68 +769,81 @@ def _get_page_or_fail(profile_id: int, result_cls=AutomationResult):
 
 async def run_auto_login(profile_id: int, email: str, password: str,
                          totp_secret: str = "", recovery_email: str = "",
-                         verification_url: str = "", on_step=None) -> AutomationResult:
+                         verification_url: str = "", on_step=None,
+                         cancel_token=None) -> AutomationResult:
     page, err = _get_page_or_fail(profile_id)
     if err:
         return err
     return await _run_sync(
         auto_login_sync, page, email, password, totp_secret,
-        recovery_email, verification_url, on_step,
+        recovery_email, verification_url, on_step, cancel_token=cancel_token,
     )
 
 
-async def run_create_family_group(profile_id: int, on_step=None) -> AutomationResult:
+async def run_create_family_group(profile_id: int, on_step=None,
+                                  cancel_token=None) -> AutomationResult:
     page, err = _get_page_or_fail(profile_id)
     if err:
         return err
-    return await _run_sync(create_family_group_sync, page, on_step)
+    return await _run_sync(create_family_group_sync, page, on_step,
+                           cancel_token=cancel_token)
 
 
 async def run_send_family_invite(profile_id: int, invite_email: str,
-                                 on_step=None) -> AutomationResult:
+                                 on_step=None, cancel_token=None) -> AutomationResult:
     page, err = _get_page_or_fail(profile_id)
     if err:
         return err
-    return await _run_sync(send_family_invite_sync, page, invite_email, on_step)
+    return await _run_sync(send_family_invite_sync, page, invite_email, on_step,
+                           cancel_token=cancel_token)
 
 
-async def run_accept_family_invite(profile_id: int, on_step=None) -> AutomationResult:
+async def run_accept_family_invite(profile_id: int, on_step=None,
+                                   cancel_token=None) -> AutomationResult:
     page, err = _get_page_or_fail(profile_id)
     if err:
         return err
-    return await _run_sync(accept_family_invite_sync, page, on_step)
+    return await _run_sync(accept_family_invite_sync, page, on_step,
+                           cancel_token=cancel_token)
 
 
 async def run_remove_family_member(profile_id: int, member_email: str,
                                    password: str = "", totp_secret: str = "",
-                                   on_step=None) -> AutomationResult:
+                                   on_step=None, cancel_token=None) -> AutomationResult:
     page, err = _get_page_or_fail(profile_id)
     if err:
         return err
     return await _run_sync(
         remove_family_member_sync, page, member_email, password, totp_secret, on_step,
+        cancel_token=cancel_token,
     )
 
 
 async def run_leave_family_group(profile_id: int, password: str = "",
-                                 totp_secret: str = "", on_step=None) -> AutomationResult:
+                                 totp_secret: str = "", on_step=None,
+                                 cancel_token=None) -> AutomationResult:
     page, err = _get_page_or_fail(profile_id)
     if err:
         return err
-    return await _run_sync(leave_family_group_sync, page, password, totp_secret, on_step)
+    return await _run_sync(leave_family_group_sync, page, password, totp_secret, on_step,
+                           cancel_token=cancel_token)
 
 
-async def run_discover_family_group(profile_id: int, on_step=None) -> FamilyDiscoverResult:
+async def run_discover_family_group(profile_id: int, on_step=None,
+                                    cancel_token=None) -> FamilyDiscoverResult:
     page, err = _get_page_or_fail(profile_id, result_cls=FamilyDiscoverResult)
     if err:
         return err
-    return await _run_sync(discover_family_group_sync, page, on_step)
+    return await _run_sync(discover_family_group_sync, page, on_step,
+                           cancel_token=cancel_token)
 
 
-async def run_oauth(profile_id: int, on_step=None, password: str = "", totp_secret: str = "") -> AutomationResult:
+async def run_oauth(profile_id: int, on_step=None, password: str = "", totp_secret: str = "",
+                    cancel_token=None) -> AutomationResult:
     """在已登录浏览器中自动完成 OAuth 授权"""
     page, err = _get_page_or_fail(profile_id)
     if err:
         return err
     from services.oauth import oauth_sync
-    return await _run_sync(oauth_sync, page, on_step, password, totp_secret)
+    return await _run_sync(oauth_sync, page, on_step, password, totp_secret,
+                           cancel_token=cancel_token)

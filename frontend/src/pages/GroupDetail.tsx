@@ -44,6 +44,7 @@ import {
   FileTextOutlined,
   LinkOutlined,
   PhoneOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -752,6 +753,16 @@ const GroupDetail: React.FC = () => {
               <GoogleOutlined style={{ color: '#4285f4', fontSize: 14 }} />
               <Text strong style={{ fontSize: 13 }}>{selectedAccount.email}</Text>
               {opState?.runningOpKey && <Tag color="processing" style={{ margin: 0 }}>{opState.runningOpKey}</Tag>}
+              {opState?.runningOpKey && (
+                <Button
+                  size="small"
+                  danger
+                  icon={<StopOutlined />}
+                  onClick={() => automation.cancel()}
+                >
+                  取消
+                </Button>
+              )}
             </Flex>
           ) : (
             <Text type="secondary" style={{ fontSize: 12 }}>点击左侧卡片查看日志</Text>
