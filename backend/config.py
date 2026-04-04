@@ -1,10 +1,10 @@
 """应用配置模块 - 集中管理所有配置项"""
 import os
-import secrets
 
+DEFAULT_SECRET_KEY = "accops-local-dev-secret-key"
 
 # JWT 配置
-SECRET_KEY = os.environ.get("GAM_SECRET_KEY", secrets.token_urlsafe(32))
+SECRET_KEY = os.environ.get("GAM_SECRET_KEY", DEFAULT_SECRET_KEY)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("GAM_TOKEN_EXPIRE_MINUTES", "480"))  # 默认 8 小时
 

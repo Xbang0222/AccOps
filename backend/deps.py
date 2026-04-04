@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 import config
 from models.database import get_db
-from utils.crypto import CryptoManager
 from services.auth import AuthService
 from services.account import AccountService
 from services.group import GroupService
@@ -20,7 +19,6 @@ class AppState:
     """应用运行时状态"""
 
     def __init__(self):
-        self.crypto: CryptoManager = CryptoManager()
         self.logged_in: bool = False
 
 
@@ -52,14 +50,11 @@ def verify_token(
 ) -> dict:
     """校验 JWT Token"""
     try:
-        payload = jwt.decode(
+        return jwt.decode(
             credentials.credentials,
             config.SECRET_KEY,
             algorithms=[config.ALGORITHM],
         )
-        if not state.logged_in:
-            raise HTTPException(status_code=401, detail="会话已过期，请重新登录")
-        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token 已过期")
     except jwt.JWTError:
@@ -79,6 +74,6 @@ def verify_ws_token(token: str) -> bool:
     """校验 WebSocket 连接的 Token (query param)"""
     try:
         jwt.decode(token, config.SECRET_KEY, algorithms=[config.ALGORITHM])
-        return state.logged_in
+        return True
     except Exception:
         return False

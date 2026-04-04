@@ -13,9 +13,6 @@ class AccountService:
     def __init__(self, db: Session, crypto=None):
         self.db = db
 
-    def set_crypto(self, crypto):
-        pass  # 不再需要加密管理器
-
     def _to_dict(self, account: Account) -> Dict:
         """ORM 对象转字典"""
         from models.orm import Group

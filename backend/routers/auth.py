@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from deps import (
     get_auth_service,
-    create_access_token, state,
+    create_access_token,
 )
 from models.schemas import LoginRequest, SetPasswordRequest, TokenResponse
 from services.auth import AuthService
@@ -31,8 +31,6 @@ async def setup_password(
         raise HTTPException(status_code=400, detail="密码长度至少6位")
 
     auth.set_master_password(request.password)
-    state.logged_in = True
-
     return {"access_token": create_access_token({"sub": "user"}), "token_type": "bearer"}
 
 
@@ -44,7 +42,5 @@ async def login(
     """登录验证"""
     if not auth.verify_master_password(request.password):
         raise HTTPException(status_code=401, detail="密码错误")
-
-    state.logged_in = True
 
     return {"access_token": create_access_token({"sub": "user"}), "token_type": "bearer"}

@@ -1,5 +1,4 @@
 """账号路由 - 账号 CRUD、分组/标签查询、TOTP、批量导入"""
-import re
 import time
 import pyotp
 from fastapi import APIRouter, HTTPException, Depends
@@ -7,16 +6,9 @@ from fastapi import APIRouter, HTTPException, Depends
 from deps import verify_token, get_account_service
 from models.schemas import AccountCreate, AccountUpdate, AccountImportRequest
 from services.account import AccountService
+from services.account_import_parser import parse_account_import_line
 
 router = APIRouter(prefix="/accounts", tags=["账号"], dependencies=[Depends(verify_token)])
-
-
-def _is_totp_secret(value: str) -> bool:
-    """判断字段是否像 TOTP 密钥 (base32 编码, 无空格, 16+ 字符)"""
-    if " " in value or len(value) < 12:
-        return False
-    # base32 字符: A-Z, 2-7 (不区分大小写), 可能有 = 填充
-    return bool(re.match(r'^[A-Za-z2-7=]+$', value))
 
 
 @router.get("")
@@ -99,73 +91,40 @@ async def import_accounts(
     results = {"success": 0, "skipped": 0, "failed": 0, "details": []}
 
     for line in lines:
-        # 自动检测分隔符: ---- 或 |
-        if "----" in line:
-            parts = [p.strip() for p in line.split("----")]
-        else:
-            parts = [p.strip() for p in line.split("|")]
-        if not parts or not parts[0]:
+        try:
+            parsed = parse_account_import_line(
+                line,
+                default_tags=data.tags or "",
+                default_group_name=data.group_name or "",
+                default_notes=data.notes or "",
+            )
+        except ValueError as exc:
             results["failed"] += 1
-            results["details"].append({"line": line, "status": "failed", "reason": "空行"})
+            results["details"].append({"line": line, "status": "failed", "reason": str(exc)})
             continue
-
-        # 第1个字段: 邮箱, 第2个字段: 密码
-        email = parts[0]
-        password = parts[1] if len(parts) > 1 else ""
-
-        # 第3个字段起: 智能识别
-        recovery_email = ""
-        totp_secret = ""
-        links = []
-        extra_notes = []
-
-        for field in parts[2:]:
-            if not field:
-                continue
-            if "@" in field and not field.startswith("http"):
-                # 含 @ 且不是 URL → 辅助邮箱
-                recovery_email = field
-            elif field.startswith("http://") or field.startswith("https://"):
-                # URL → 链接
-                links.append(field)
-            elif _is_totp_secret(field) and not totp_secret:
-                # 像 TOTP 密钥 (base32, 无空格, 16+字符) 且还没设过
-                totp_secret = field
-            else:
-                # 其他 (国家名、备注等) → 记入备注
-                extra_notes.append(field)
 
         # 检查邮箱是否已存在
-        existing = svc.find_by_email(email)
+        existing = svc.find_by_email(parsed.email)
         if existing:
             results["skipped"] += 1
-            results["details"].append({"email": email, "status": "skipped", "reason": "邮箱已存在"})
+            results["details"].append({"email": parsed.email, "status": "skipped", "reason": "邮箱已存在"})
             continue
-
-        # 构造备注: 链接和额外信息记录到 notes
-        notes = data.notes or ""
-        if links:
-            links_text = "\n".join(links)
-            notes = f"验证链接: {links_text}" + (f"\n{notes}" if notes else "")
-        if extra_notes:
-            extra_text = ", ".join(extra_notes)
-            notes = (f"{notes}\n" if notes else "") + extra_text
 
         try:
             account_id = svc.create(
-                email=email,
-                password=password,
-                recovery_email=recovery_email,
-                totp_secret=totp_secret,
-                tags=data.tags or "",
-                group_name=data.group_name or "",
-                notes=notes,
+                email=parsed.email,
+                password=parsed.password,
+                recovery_email=parsed.recovery_email,
+                totp_secret=parsed.totp_secret,
+                tags=parsed.tags,
+                group_name=parsed.group_name,
+                notes=parsed.notes,
             )
             results["success"] += 1
-            results["details"].append({"email": email, "status": "success", "id": account_id})
+            results["details"].append({"email": parsed.email, "status": "success", "id": account_id})
         except Exception as e:
             results["failed"] += 1
-            results["details"].append({"email": email, "status": "failed", "reason": str(e)})
+            results["details"].append({"email": parsed.email, "status": "failed", "reason": str(e)})
 
     return {
         "message": f"导入完成: 成功 {results['success']}, 跳过 {results['skipped']}, 失败 {results['failed']}",
