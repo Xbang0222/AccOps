@@ -656,12 +656,12 @@ const GroupDetail: React.FC = () => {
           <Flex gap={3} wrap onClick={(e) => e.stopPropagation()}>
             {isPending ? (
               <>
-                <Tooltip title="启动并登录">
-                  <Button type="text" size="small" disabled={isBrowserLoading || isThisAccountRunning}
+                <Tooltip title={isBrowserLoading ? '处理中' : isRunning ? '关闭浏览器' : '启动并登录'}>
+                  <Button type="text" size="small" disabled={isBrowserLoading}
                     icon={isBrowserLoading ? <LoadingOutlined style={{ color: '#1677ff' }} />
                       : isRunning ? <PoweroffOutlined style={{ color: '#ff4d4f' }} />
                       : <LoginOutlined style={{ color: '#4285f4' }} />}
-                    onClick={() => isRunning ? handleStopBrowser(record.id) : handleLaunchBrowser(record.id)}
+                    onClick={() => { if (isRunning) { automation.cancel(); handleStopBrowser(record.id); } else { handleLaunchBrowser(record.id); } }}
                     style={{ padding: '0 4px' }} />
                 </Tooltip>
                 <Tooltip title="接受邀请">
@@ -674,11 +674,11 @@ const GroupDetail: React.FC = () => {
             ) : (
               <>
                 <Tooltip title={isBrowserLoading ? '处理中' : isRunning ? '关闭浏览器' : '启动并登录'}>
-                  <Button type="text" size="small" disabled={isBrowserLoading || isThisAccountRunning}
+                  <Button type="text" size="small" disabled={isBrowserLoading}
                     icon={isBrowserLoading ? <LoadingOutlined style={{ color: '#1677ff' }} />
                       : isRunning ? <PoweroffOutlined style={{ color: '#ff4d4f' }} />
                       : <LoginOutlined style={{ color: '#4285f4' }} />}
-                    onClick={() => isRunning ? handleStopBrowser(record.id) : handleLaunchBrowser(record.id)}
+                    onClick={() => { if (isRunning) { automation.cancel(); handleStopBrowser(record.id); } else { handleLaunchBrowser(record.id); } }}
                     style={{ padding: '0 4px' }} />
                 </Tooltip>
                 {record.totp_secret && (

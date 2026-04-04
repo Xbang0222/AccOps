@@ -250,7 +250,7 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
   /** 点击卡片 */
   const handleCardClick = (op: OpDef) => {
     if (op.key === 'browser') {
-      browserRunning ? onStopBrowser() : onLaunchBrowser();
+      if (browserRunning) { cancel(); onStopBrowser(); } else { onLaunchBrowser(); }
       return;
     }
     // family-discover 用 REST API, 不需要浏览器
@@ -398,8 +398,8 @@ const OperationPanel: React.FC<OperationPanelProps> = ({
           const isBrowser = op.key === 'browser';
           const isThisRunning = runningOp === op.key || (op.key === 'family-discover' && discoverRunning);
           const disabled =
-            isAnyRunning ||
             (isBrowser && browserLoading) ||
+            (!isBrowser && isAnyRunning) ||
             (!isBrowser && op.needBrowser && !browserRunning);
 
           let label = op.label;
