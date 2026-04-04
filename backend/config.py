@@ -15,7 +15,8 @@ DATABASE_URL = os.environ.get(
 )
 
 # CORS 配置
-CORS_ORIGINS = os.environ.get("GAM_CORS_ORIGINS", "http://localhost:5173").split(",")
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+CORS_ORIGINS = [origin.strip() for origin in os.environ.get("GAM_CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",") if origin.strip()]
 
 # 服务器配置
 HOST = os.environ.get("GAM_HOST", "127.0.0.1")

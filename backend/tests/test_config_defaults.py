@@ -18,6 +18,18 @@ class ConfigDefaultsTests(unittest.TestCase):
                 os.environ["GAM_SECRET_KEY"] = original
             importlib.reload(config)
 
+    def test_default_cors_origins_include_localhost_and_loopback(self) -> None:
+        original = os.environ.pop("GAM_CORS_ORIGINS", None)
+        try:
+            origins = importlib.reload(config).CORS_ORIGINS
+
+            self.assertIn("http://localhost:5173", origins)
+            self.assertIn("http://127.0.0.1:5173", origins)
+        finally:
+            if original is not None:
+                os.environ["GAM_CORS_ORIGINS"] = original
+            importlib.reload(config)
+
 
 if __name__ == "__main__":
     unittest.main()

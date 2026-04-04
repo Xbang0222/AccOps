@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
@@ -14,59 +14,74 @@ function getPackageName(id: string) {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes('node_modules')) {
-            return
-          }
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, __dirname, '')
+  const proxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8000'
 
-          const packageName = getPackageName(id)
-
-          if (
-            packageName === 'react' ||
-            packageName === 'react-dom' ||
-            packageName === 'react-router-dom' ||
-            packageName === 'scheduler'
-          ) {
-            return 'react-vendor'
-          }
-
-          if (packageName === 'antd') {
-            return 'antd'
-          }
-
-          if (packageName === '@ant-design/icons') {
-            return 'ant-design-icons'
-          }
-
-          if (
-            packageName.startsWith('@ant-design/') ||
-            packageName.startsWith('@rc-component/') ||
-            packageName.startsWith('rc-')
-          ) {
-            return 'antd-ecosystem'
-          }
-
-          if (packageName === 'axios') {
-            return 'http-client'
-          }
-
-          if (packageName === 'otpauth') {
-            return 'otp'
-          }
-
-          return 'vendor'
+  return {
+    plugins: [react()],
+    server: {
+      host: '0.0.0.0',
+      proxy: {
+        '/api': {
+          target: proxyTarget,
+          changeOrigin: true,
+          ws: true,
         },
       },
     },
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return
+            }
+
+            const packageName = getPackageName(id)
+
+            if (
+              packageName === 'react' ||
+              packageName === 'react-dom' ||
+              packageName === 'react-router-dom' ||
+              packageName === 'scheduler'
+            ) {
+              return 'react-vendor'
+            }
+
+            if (packageName === 'antd') {
+              return 'antd'
+            }
+
+            if (packageName === '@ant-design/icons') {
+              return 'ant-design-icons'
+            }
+
+            if (
+              packageName.startsWith('@ant-design/') ||
+              packageName.startsWith('@rc-component/') ||
+              packageName.startsWith('rc-')
+            ) {
+              return 'antd-ecosystem'
+            }
+
+            if (packageName === 'axios') {
+              return 'http-client'
+            }
+
+            if (packageName === 'otpauth') {
+              return 'otp'
+            }
+
+            return 'vendor'
+          },
+        },
+      },
     },
-  },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, 'src'),
+      },
+    },
+  }
 })
