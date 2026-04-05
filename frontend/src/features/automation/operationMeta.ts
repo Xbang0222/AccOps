@@ -6,7 +6,7 @@ export interface AutomationOperationField {
 }
 
 export interface AutomationOperationDefinition {
-  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'replace'
+  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'replace' | 'family-rotate'
   label: string
   color: string
   needBrowser: boolean
@@ -76,6 +76,17 @@ export const FAMILY_AUTOMATION_OPERATIONS: AutomationOperationDefinition[] = [
     fields: [
       { name: 'old_email', placeholder: '旧成员邮箱 (将被移除)' },
       { name: 'new_email', placeholder: '新成员邮箱 (将被邀请)' },
+    ],
+    role: 'owner',
+  },
+  {
+    key: 'family-rotate',
+    label: '轮换',
+    color: '#eb2f96',
+    needBrowser: true,
+    fields: [
+      { name: 'remove_emails', placeholder: '要移除的子号（逗号分隔）' },
+      { name: 'new_count', placeholder: '新子号数量' },
     ],
     role: 'owner',
   },

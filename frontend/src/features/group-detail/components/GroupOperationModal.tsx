@@ -114,7 +114,42 @@ export function GroupOperationModal({
           </Space>
         ) : null}
 
-        {activeOp && !['family-invite', 'family-remove', 'replace'].includes(activeOp.key) ? (
+        {activeOp?.key === 'family-rotate' ? (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <div>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+                要移除的子号（从当前成员中选择）:
+              </Text>
+              <Select
+                mode="multiple"
+                style={{ width: '100%' }}
+                placeholder="选择要移除的子号"
+                value={selectedEmails}
+                onChange={onChangeSelectedEmails}
+                options={memberOptions}
+                optionFilterProp="label"
+              />
+            </div>
+            <div>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+                新子号数量（从可用池自动选取）:
+              </Text>
+              <Input
+                type="number"
+                min={1}
+                max={5}
+                placeholder="新子号数量"
+                value={formValues['new_count'] || ''}
+                onChange={(event) => onChangeFormValue('new_count', event.target.value)}
+              />
+            </div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              需要主号浏览器运行中；新子号需之前登录过（有 cookies）
+            </Text>
+          </Space>
+        ) : null}
+
+        {activeOp && !['family-invite', 'family-remove', 'replace', 'family-rotate'].includes(activeOp.key) ? (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             {activeOp.fields?.map((field) => (
               <Input

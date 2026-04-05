@@ -191,6 +191,7 @@ ACTION_FAMILY_DISCOVER = "family-discover"
 ACTION_FAMILY_BATCH_INVITE = "family-batch-invite"
 ACTION_FAMILY_BATCH_REMOVE = "family-batch-remove"
 ACTION_FAMILY_REPLACE = "family-replace"
+ACTION_FAMILY_ROTATE = "family-rotate"
 ACTION_OAUTH = "oauth"
 ACTION_PHONE_VERIFY = "phone-verify"
 

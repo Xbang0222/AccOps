@@ -40,6 +40,7 @@ from core.constants import (
     ACTION_FAMILY_BATCH_INVITE,
     ACTION_FAMILY_BATCH_REMOVE,
     ACTION_FAMILY_REPLACE,
+    ACTION_FAMILY_ROTATE,
     ACTION_OAUTH,
     ACTION_PHONE_VERIFY,
     PHASE_REMOVE_OLD,
@@ -542,6 +543,158 @@ async def _handle_family_replace(
     return True
 
 
+async def _handle_family_rotate(
+    ws: WebSocket,
+    msg_queue: queue.Queue,
+    cancel_token: CancellationToken,
+    profile_id: int,
+    account_id: int,
+    password: str,
+    totp_secret: str,
+    remove_emails: list[str],
+    new_count: int,
+) -> bool:
+    """执行批量轮换：移除旧子号 → 选取新子号 → 邀请 → 自动接受。"""
+    from services.family_api import FamilyAPI
+    from services.account import AccountService
+
+    remove_success = 0
+
+    # ── 阶段1: 批量移除旧子号 ──
+    if remove_emails:
+        await ws.send_json({"type": "step", "name": "--- 阶段1: 移除旧子号 ---", "status": "info", "message": f"共 {len(remove_emails)} 个"})
+        remove_success = 0
+        remove_fail = []
+
+        for i, email in enumerate(remove_emails):
+            if cancel_token.is_cancelled:
+                break
+            step = _create_step_handler(msg_queue, i * 50)
+            step({"type": "step", "name": f"移除 {email}", "status": "running", "message": f"({i+1}/{len(remove_emails)})"})
+
+            task = asyncio.ensure_future(
+                run_remove_family_member(profile_id, email, password, totp_secret, on_step=step, cancel_token=cancel_token)
+            )
+            if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+                return False
+
+            result, error = _get_task_result(task)
+            if result and result.success:
+                remove_success += 1
+                sync_group_after_action(ACTION_FAMILY_REMOVE, account_id, True, result.message, {"member_email": email})
+            else:
+                remove_fail.append(email)
+
+        await ws.send_json({"type": "step", "name": "阶段1完成", "status": "ok", "message": f"移除 {remove_success}/{len(remove_emails)}"})
+
+    # ── 阶段2: 从可用池选取新子号 ──
+    await ws.send_json({"type": "step", "name": "--- 阶段2: 选取新子号 ---", "status": "info", "message": f"需要 {new_count} 个"})
+
+    with get_db_session() as db:
+        svc = AccountService(db)
+        available = svc.get_available(limit=new_count)
+
+    if not available:
+        await ws.send_json({"type": "result", "success": False, "message": "没有可用的子号", "duration_ms": 0})
+        return True
+
+    selected_emails = [a["email"] for a in available]
+    actual_count = len(selected_emails)
+    if actual_count < new_count:
+        await ws.send_json({"type": "step", "name": "可用数量不足", "status": "info", "message": f"需要 {new_count}, 可用 {actual_count}"})
+
+    await ws.send_json({"type": "step", "name": "阶段2完成", "status": "ok", "message": f"已选取 {actual_count} 个子号"})
+
+    # ── 阶段3: 用主号 cookies 批量发送邀请 ──
+    await ws.send_json({"type": "step", "name": "--- 阶段3: 批量邀请 ---", "status": "info", "message": f"共 {actual_count} 个"})
+
+    invite_success = []
+    invite_fail = []
+
+    for i, email in enumerate(selected_emails):
+        if cancel_token.is_cancelled:
+            break
+        step = _create_step_handler(msg_queue, 1000 + i * 50)
+        step({"type": "step", "name": f"邀请 {email}", "status": "running", "message": f"({i+1}/{actual_count})"})
+
+        task = asyncio.ensure_future(
+            run_send_family_invite(profile_id, email, on_step=step, cancel_token=cancel_token)
+        )
+        if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+            return False
+
+        result, error = _get_task_result(task)
+        if result and result.success:
+            invite_success.append(email)
+            sync_group_after_action(ACTION_FAMILY_INVITE, account_id, True, result.message, {"invite_email": email})
+        else:
+            invite_fail.append(f"{email}: {result.message if result else error}")
+
+    await ws.send_json({"type": "step", "name": "阶段3完成", "status": "ok", "message": f"邀请成功 {len(invite_success)}/{actual_count}"})
+
+    if not invite_success:
+        await ws.send_json({"type": "result", "success": False, "message": f"邀请全部失败: {'; '.join(invite_fail)}", "duration_ms": 0})
+        return True
+
+    # ── 阶段4: 用子号 cookies 自动接受邀请 ──
+    await ws.send_json({"type": "step", "name": "--- 阶段4: 自动接受邀请 ---", "status": "info", "message": f"共 {len(invite_success)} 个"})
+
+    accept_success = 0
+    accept_fail = []
+
+    for i, email in enumerate(invite_success):
+        if cancel_token.is_cancelled:
+            break
+
+        await ws.send_json({"type": "step", "name": f"接受 {email}", "status": "running", "message": f"({i+1}/{len(invite_success)})"})
+
+        # 从数据库获取子号 cookies
+        cookies_json = ""
+        sub_account_id = None
+        with get_db_session() as db:
+            sub = db.query(Account).filter(Account.email.ilike(email)).first()
+            if sub:
+                cookies_json = sub.cookies_json or ""
+                sub_account_id = sub.id
+
+        if not cookies_json:
+            accept_fail.append(f"{email}: 无 cookies (需先登录)")
+            await ws.send_json({"type": "step", "name": f"接受 {email}", "status": "fail", "message": "无 cookies"})
+            continue
+
+        # 用 cookies 调用 RPC 接受邀请
+        try:
+            import json as json_mod
+            cookies = json_mod.loads(cookies_json)
+            with FamilyAPI(cookies) as api:
+                result = api.accept_invite()
+            if result.get("success"):
+                accept_success += 1
+                await ws.send_json({"type": "step", "name": f"接受 {email}", "status": "ok", "message": "已加入"})
+                if sub_account_id:
+                    sync_group_after_action(ACTION_FAMILY_ACCEPT, sub_account_id, True, "已接受邀请", {"manager_account_id": account_id})
+            else:
+                error_msg = result.get("error", "接受失败")
+                accept_fail.append(f"{email}: {error_msg}")
+                await ws.send_json({"type": "step", "name": f"接受 {email}", "status": "fail", "message": error_msg})
+        except Exception as exc:
+            accept_fail.append(f"{email}: {exc}")
+            await ws.send_json({"type": "step", "name": f"接受 {email}", "status": "fail", "message": str(exc)[:100]})
+
+    # ── 最终报告 ──
+    parts = []
+    if remove_emails:
+        parts.append(f"移除 {remove_success}/{len(remove_emails)}")
+    parts.append(f"邀请 {len(invite_success)}/{actual_count}")
+    parts.append(f"接受 {accept_success}/{len(invite_success)}")
+    summary = f"轮换完成: {', '.join(parts)}"
+    if accept_fail:
+        summary += f" | 失败: {'; '.join(accept_fail)}"
+
+    await ws.send_json({"type": "result", "success": accept_success > 0, "message": summary, "duration_ms": 0})
+    return True
+
+
 # ---- 自动登录 ----
 
 @router.post("/login")
@@ -980,6 +1133,25 @@ async def automation_websocket(ws: WebSocket):
                     totp_secret=totp_secret,
                     old_email=old_email,
                     new_email=new_email,
+                ):
+                    return
+                continue
+            elif action == ACTION_FAMILY_ROTATE:
+                rotate_remove = [e.strip() for e in data.get("remove_emails", "").split(",") if e.strip()]
+                rotate_count = int(data.get("new_count", "0") or "0")
+                if rotate_count <= 0:
+                    await ws.send_json({"type": "error", "message": "新子号数量必须大于 0"})
+                    continue
+                if not await _handle_family_rotate(
+                    ws=ws,
+                    msg_queue=msg_queue,
+                    cancel_token=cancel_token,
+                    profile_id=profile_id,
+                    account_id=account_id,
+                    password=password,
+                    totp_secret=totp_secret,
+                    remove_emails=rotate_remove,
+                    new_count=rotate_count,
                 ):
                     return
                 continue

@@ -360,6 +360,21 @@ export function useGroupDetailController(groupId: number) {
         { old_email: replaceOldEmail, new_email: replaceNewEmail.trim() },
         'replace',
       )
+    } else if (activeOp.key === 'family-rotate') {
+      const newCount = parseInt(formValues['new_count'] || '0', 10)
+      if (newCount <= 0) {
+        msg.warning('请输入新子号数量')
+        return
+      }
+      executeViaWs(
+        activeAccountId,
+        'family-rotate',
+        {
+          remove_emails: selectedEmails.join(','),
+          new_count: String(newCount),
+        },
+        'family-rotate',
+      )
     } else {
       for (const field of activeOp.fields ?? []) {
         if (!formValues[field.name]?.trim()) {

@@ -66,7 +66,7 @@ class Account(Base):
     country_cn = Column(String, default="")  # 中文国家名, 如 "美国"
     cookies_json = Column(Text, default="")  # 登录后保存的 cookies (JSON), 用于纯 HTTP 操作
     oauth_credential_json = Column(Text, default="")  # OAuth 认证 JSON (antigravity 格式)
-    retired_at = Column(DateTime, nullable=True)  # 从家庭组退出/移除的时间 (12个月冷却期)
+    retired_at = Column(DateTime, nullable=True)  # 从家庭组退出/移除的时间 (当日可复用，次日起冷却)
     notes = Column(Text, default="")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

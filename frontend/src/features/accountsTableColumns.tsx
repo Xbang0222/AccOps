@@ -160,12 +160,18 @@ export function createAccountTableColumns({
     {
       title: '状态',
       dataIndex: 'retired_at',
-      key: 'retired_at',
-      width: 70,
-      render: (retired_at: string | null) =>
-        retired_at ? (
-          <Tag color="default" style={{ margin: 0, fontSize: 11 }}>已用过</Tag>
-        ) : null,
+      key: 'use_status',
+      width: 80,
+      render: (_: unknown, record: Account) => {
+        if (!record.retired_at) return null
+        const retiredDate = new Date(record.retired_at)
+        const today = new Date()
+        const isToday = retiredDate.toDateString() === today.toDateString()
+        if (isToday) {
+          return <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>今日可复用</Tag>
+        }
+        return <Tag color="default" style={{ margin: 0, fontSize: 11 }}>已用完</Tag>
+      },
     },
     {
       title: '创建时间',
