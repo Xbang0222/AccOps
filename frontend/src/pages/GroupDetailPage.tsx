@@ -1,12 +1,14 @@
-import React from 'react'
-import { Button, Empty, Flex, Spin, Tag, Tooltip, Typography } from 'antd'
-import { ArrowLeftOutlined, EyeInvisibleOutlined, EyeOutlined, TeamOutlined } from '@ant-design/icons'
+import React, { useState, useCallback } from 'react'
+import { App, Button, Empty, Flex, Modal, Select, Spin, Tag, Tooltip, Typography } from 'antd'
+import { ArrowLeftOutlined, DatabaseOutlined, EyeInvisibleOutlined, EyeOutlined, TeamOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { getAvailableAccounts, getPoolAccounts, addToPool, removeFromPool } from '@/api'
 import { GroupAccountCard } from '@/features/group-detail/components/GroupAccountCard'
 import { GroupOperationLogPanel } from '@/features/group-detail/components/GroupOperationLogPanel'
 import { GroupOperationModal } from '@/features/group-detail/components/GroupOperationModal'
 import { useGroupDetailController } from '@/features/group-detail/useGroupDetailController'
+import type { Account } from '@/types'
 
 const { Text } = Typography
 
@@ -15,6 +17,56 @@ const GroupDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const groupId = Number(groupIdParam)
   const controller = useGroupDetailController(groupId)
+  const { message: msg } = App.useApp()
+
+  // 号池管理状态
+  const [poolVisible, setPoolVisible] = useState(false)
+  const [poolAccounts, setPoolAccounts] = useState<Account[]>([])
+  const [poolLoading, setPoolLoading] = useState(false)
+  const [addPoolVisible, setAddPoolVisible] = useState(false)
+  const [globalAvailable, setGlobalAvailable] = useState<{ label: string; value: number }[]>([])
+  const [selectedPoolIds, setSelectedPoolIds] = useState<number[]>([])
+
+  const loadPool = useCallback(async () => {
+    setPoolLoading(true)
+    try {
+      const { data } = await getPoolAccounts(groupId)
+      setPoolAccounts(data.accounts)
+    } catch { /* noop */ }
+    finally { setPoolLoading(false) }
+  }, [groupId])
+
+  const handleOpenPool = useCallback(() => {
+    setPoolVisible(true)
+    void loadPool()
+  }, [loadPool])
+
+  const handleAddToPool = useCallback(async () => {
+    if (selectedPoolIds.length === 0) return
+    try {
+      await addToPool(groupId, selectedPoolIds)
+      msg.success(`已添加 ${selectedPoolIds.length} 个账号到号池`)
+      setSelectedPoolIds([])
+      setAddPoolVisible(false)
+      void loadPool()
+    } catch { msg.error('添加失败') }
+  }, [groupId, loadPool, msg, selectedPoolIds])
+
+  const handleRemoveFromPool = useCallback(async (accountIds: number[]) => {
+    try {
+      await removeFromPool(groupId, accountIds)
+      msg.success('已从号池移除')
+      void loadPool()
+    } catch { msg.error('移除失败') }
+  }, [groupId, loadPool, msg])
+
+  const handleOpenAddPool = useCallback(async () => {
+    setAddPoolVisible(true)
+    try {
+      const { data } = await getAvailableAccounts()
+      setGlobalAvailable(data.accounts.map((a) => ({ label: a.email, value: a.id })))
+    } catch { /* noop */ }
+  }, [])
 
   if (controller.loading && !controller.group) {
     return (
@@ -44,6 +96,13 @@ const GroupDetailPage: React.FC = () => {
         </Tag>
         {controller.group.notes ? <Text type="secondary" style={{ fontSize: 12 }}>{controller.group.notes}</Text> : null}
         <div style={{ flex: 1 }} />
+        <Tooltip title="号池管理">
+          <Button
+            type="text"
+            icon={<DatabaseOutlined />}
+            onClick={handleOpenPool}
+          />
+        </Tooltip>
         <Tooltip title={controller.masked ? '显示邮箱' : '隐藏邮箱'}>
           <Button
             type="text"
@@ -115,6 +174,78 @@ const GroupDetailPage: React.FC = () => {
         onOk={controller.handleFieldModalOk}
         onSearchEmails={controller.handleEmailSearch}
       />
+
+      {/* 号池管理弹窗 */}
+      <Modal
+        title={`号池管理 — ${controller.group.name}`}
+        open={poolVisible}
+        onCancel={() => setPoolVisible(false)}
+        footer={[
+          <Button key="login" onClick={() => {
+            if (controller.group?.main_account_id) {
+              controller.automation.execute(
+                controller.group.main_account_id,
+                'pool-batch-login',
+                {},
+                'pool-batch-login',
+              )
+              setPoolVisible(false)
+            }
+          }}>批量登录</Button>,
+          <Button key="add" type="primary" onClick={handleOpenAddPool}>添加账号到号池</Button>,
+          <Button key="close" onClick={() => setPoolVisible(false)}>关闭</Button>,
+        ]}
+        width={500}
+      >
+        <Spin spinning={poolLoading}>
+          {poolAccounts.length > 0 ? (
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {poolAccounts.map((a) => (
+                <Flex key={a.id} justify="space-between" align="center" style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  <Text style={{ fontSize: 13 }}>{a.email}</Text>
+                  <Flex gap={4} align="center">
+                    {a.retired_at ? (
+                      <Tag color={new Date(a.retired_at).toDateString() === new Date().toDateString() ? 'blue' : 'default'} style={{ margin: 0, fontSize: 11 }}>
+                        {new Date(a.retired_at).toDateString() === new Date().toDateString() ? '今日可复用' : '已用完'}
+                      </Tag>
+                    ) : (
+                      <Tag color="green" style={{ margin: 0, fontSize: 11 }}>可用</Tag>
+                    )}
+                    <Button size="small" type="text" danger onClick={() => handleRemoveFromPool([a.id])}>移除</Button>
+                  </Flex>
+                </Flex>
+              ))}
+            </div>
+          ) : (
+            <Empty description="号池为空，请添加备用账号" style={{ margin: '20px 0' }} />
+          )}
+        </Spin>
+      </Modal>
+
+      {/* 添加到号池弹窗 */}
+      <Modal
+        title="添加账号到号池"
+        open={addPoolVisible}
+        onCancel={() => { setAddPoolVisible(false); setSelectedPoolIds([]); }}
+        onOk={handleAddToPool}
+        okText="添加"
+        cancelText="取消"
+        width={450}
+      >
+        <Select
+          mode="multiple"
+          style={{ width: '100%' }}
+          placeholder="搜索并选择账号"
+          value={selectedPoolIds}
+          onChange={setSelectedPoolIds}
+          options={globalAvailable}
+          optionFilterProp="label"
+          showSearch
+        />
+        <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
+          仅显示未分配到任何号池且不在家庭组中的账号
+        </Text>
+      </Modal>
     </div>
   )
 }

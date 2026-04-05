@@ -1,5 +1,7 @@
-"""分组路由 - 分组 CRUD、成员管理"""
+"""分组路由 - 分组 CRUD、成员管理、号池管理"""
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
+from typing import List
 
 from deps import verify_token, get_group_service
 from models.schemas import GroupCreate, GroupUpdate
@@ -99,3 +101,42 @@ async def set_main_account(
         return {"message": "主号设置成功"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── 号池管理 ──
+
+
+class PoolAccountIds(BaseModel):
+    account_ids: List[int]
+
+
+@router.get("/{group_id}/pool")
+async def get_pool_accounts(
+    group_id: int,
+    svc: GroupService = Depends(get_group_service),
+):
+    """获取分组号池中的可用账号"""
+    accounts = svc.get_pool_accounts(group_id)
+    return {"accounts": accounts}
+
+
+@router.post("/{group_id}/pool")
+async def add_to_pool(
+    group_id: int,
+    data: PoolAccountIds,
+    svc: GroupService = Depends(get_group_service),
+):
+    """将账号批量添加到分组号池"""
+    count = svc.add_to_pool(group_id, data.account_ids)
+    return {"message": f"已添加 {count} 个账号到号池"}
+
+
+@router.delete("/{group_id}/pool")
+async def remove_from_pool(
+    group_id: int,
+    data: PoolAccountIds,
+    svc: GroupService = Depends(get_group_service),
+):
+    """将账号批量从号池移除"""
+    count = svc.remove_from_pool(group_id, data.account_ids)
+    return {"message": f"已从号池移除 {count} 个账号"}

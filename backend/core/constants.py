@@ -192,6 +192,7 @@ ACTION_FAMILY_BATCH_INVITE = "family-batch-invite"
 ACTION_FAMILY_BATCH_REMOVE = "family-batch-remove"
 ACTION_FAMILY_REPLACE = "family-replace"
 ACTION_FAMILY_ROTATE = "family-rotate"
+ACTION_POOL_BATCH_LOGIN = "pool-batch-login"
 ACTION_OAUTH = "oauth"
 ACTION_PHONE_VERIFY = "phone-verify"
 

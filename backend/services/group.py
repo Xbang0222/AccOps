@@ -151,3 +151,42 @@ class GroupService:
             group.main_account_id = account_id
             group.updated_at = datetime.now(timezone.utc)
             self.db.commit()
+
+    # ── 号池管理 ──
+
+    def get_pool_accounts(self, group_id: int) -> List[Dict]:
+        """获取分组号池中的账号（不在家庭组中的备用号）"""
+        rows = (
+            self.db.query(Account)
+            .filter(
+                Account.pool_group_id == group_id,
+                Account.family_group_id.is_(None),
+            )
+            .order_by(Account.email)
+            .all()
+        )
+        return [self.account_service._to_dict(r) for r in rows]
+
+    def add_to_pool(self, group_id: int, account_ids: List[int]) -> int:
+        """将账号批量添加到号池"""
+        count = 0
+        for aid in account_ids:
+            account = self.db.query(Account).get(aid)
+            if account and account.pool_group_id != group_id:
+                account.pool_group_id = group_id
+                account.updated_at = datetime.now(timezone.utc)
+                count += 1
+        self.db.commit()
+        return count
+
+    def remove_from_pool(self, group_id: int, account_ids: List[int]) -> int:
+        """将账号批量从号池移除"""
+        count = 0
+        for aid in account_ids:
+            account = self.db.query(Account).get(aid)
+            if account and account.pool_group_id == group_id:
+                account.pool_group_id = None
+                account.updated_at = datetime.now(timezone.utc)
+                count += 1
+        self.db.commit()
+        return count

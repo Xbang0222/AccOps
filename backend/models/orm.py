@@ -59,6 +59,7 @@ class Account(Base):
     tags = Column(Text, default="")
     group_name = Column(String, default="")
     family_group_id = Column(Integer, ForeignKey("family_groups.id", ondelete="SET NULL"), nullable=True)
+    pool_group_id = Column(Integer, ForeignKey("family_groups.id", ondelete="SET NULL"), nullable=True)  # 所属号池（哪个主号的备用号）
     is_family_pending = Column(Boolean, default=False)  # 家庭组邀请待接受
     subscription_status = Column(String, default="")  # 订阅状态: free / ultra
     subscription_expiry = Column(String, default="")  # 订阅到期日, 如 "Mar 23, 2026"

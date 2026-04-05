@@ -41,6 +41,7 @@ from core.constants import (
     ACTION_FAMILY_BATCH_REMOVE,
     ACTION_FAMILY_REPLACE,
     ACTION_FAMILY_ROTATE,
+    ACTION_POOL_BATCH_LOGIN,
     ACTION_OAUTH,
     ACTION_PHONE_VERIFY,
     PHASE_REMOVE_OLD,
@@ -587,12 +588,30 @@ async def _handle_family_rotate(
 
         await ws.send_json({"type": "step", "name": "阶段1完成", "status": "ok", "message": f"移除 {remove_success}/{len(remove_emails)}"})
 
-    # ── 阶段2: 从可用池选取新子号 ──
+    # ── 阶段2: 从号池选取新子号 ──
     await ws.send_json({"type": "step", "name": "--- 阶段2: 选取新子号 ---", "status": "info", "message": f"需要 {new_count} 个"})
+
+    # 获取主号所属的 group_id 作为号池
+    pool_gid = None
+    with get_db_session() as db:
+        main_account = db.query(Account).filter(Account.id == account_id).first()
+        if main_account and main_account.family_group_id:
+            pool_gid = main_account.family_group_id
 
     with get_db_session() as db:
         svc = AccountService(db)
-        available = svc.get_available(limit=new_count)
+        # 优先从号池选，号池没有再从全局选
+        available = svc.get_available(limit=new_count, pool_group_id=pool_gid) if pool_gid else []
+        if len(available) < new_count:
+            # 号池不够，补充全局可用号
+            remaining = new_count - len(available)
+            existing_ids = {a["id"] for a in available}
+            global_available = svc.get_available(limit=remaining)
+            for a in global_available:
+                if a["id"] not in existing_ids:
+                    available.append(a)
+                    if len(available) >= new_count:
+                        break
 
     if not available:
         await ws.send_json({"type": "result", "success": False, "message": "没有可用的子号", "duration_ms": 0})
@@ -681,6 +700,53 @@ async def _handle_family_rotate(
             accept_fail.append(f"{email}: {exc}")
             await ws.send_json({"type": "step", "name": f"接受 {email}", "status": "fail", "message": str(exc)[:100]})
 
+    # ── 阶段5: 同步验证（用主号 cookies discover 确认实际成员） ──
+    await ws.send_json({"type": "step", "name": "--- 阶段5: 同步验证 ---", "status": "info", "message": "用主号确认实际成员状态"})
+
+    verified_count = 0
+    try:
+        main_cookies_json = ""
+        with get_db_session() as db:
+            main = db.query(Account).filter(Account.id == account_id).first()
+            if main:
+                main_cookies_json = main.cookies_json or ""
+
+        if main_cookies_json:
+            import json as json_mod
+            main_cookies = json_mod.loads(main_cookies_json)
+            with FamilyAPI(main_cookies) as api:
+                members_result = api.query_members()
+
+            if members_result.get("success"):
+                actual_emails = {
+                    m.get("email", "").lower()
+                    for m in members_result.get("members", [])
+                    if m.get("email")
+                }
+
+                # 对比邀请列表和实际成员
+                for email in invite_success:
+                    if email.lower() in actual_emails:
+                        if email not in [e.split(":")[0] for e in accept_fail if ":" in e] or True:
+                            verified_count += 1
+                        # 确保同步分组关系
+                        with get_db_session() as db:
+                            sub = db.query(Account).filter(Account.email.ilike(email)).first()
+                            if sub:
+                                sync_group_after_action(ACTION_FAMILY_ACCEPT, sub.id, True, "已验证加入", {"manager_account_id": account_id})
+
+                await ws.send_json({"type": "step", "name": "同步验证", "status": "ok", "message": f"实际加入 {verified_count}/{len(invite_success)}"})
+
+                # 用验证结果覆盖 accept 的不可靠结果
+                accept_success = verified_count
+                accept_fail = [f"{e}" for e in invite_success if e.lower() not in actual_emails]
+            else:
+                await ws.send_json({"type": "step", "name": "同步验证", "status": "skip", "message": "查询成员失败，以接受结果为准"})
+        else:
+            await ws.send_json({"type": "step", "name": "同步验证", "status": "skip", "message": "主号无 cookies，以接受结果为准"})
+    except Exception as exc:
+        await ws.send_json({"type": "step", "name": "同步验证", "status": "skip", "message": f"验证异常: {str(exc)[:80]}"})
+
     # ── 最终报告 ──
     parts = []
     if remove_emails:
@@ -691,7 +757,128 @@ async def _handle_family_rotate(
     if accept_fail:
         summary += f" | 失败: {'; '.join(accept_fail)}"
 
-    await ws.send_json({"type": "result", "success": accept_success > 0, "message": summary, "duration_ms": 0})
+    await ws.send_json({"type": "result", "success": accept_success > 0 or verified_count > 0, "message": summary, "duration_ms": 0})
+    return True
+
+
+async def _handle_pool_batch_login(
+    ws: WebSocket,
+    msg_queue: queue.Queue,
+    cancel_token: CancellationToken,
+    group_id: int,
+) -> bool:
+    """批量登录号池中没有 cookies 的账号：启动浏览器 → 登录 → 保存 cookies → 关闭浏览器。"""
+    # 查找号池中没有 cookies 的账号
+    accounts_to_login = []
+    with get_db_session() as db:
+        rows = (
+            db.query(Account)
+            .filter(
+                Account.pool_group_id == group_id,
+                Account.family_group_id.is_(None),
+                (Account.cookies_json.is_(None)) | (Account.cookies_json == ""),
+            )
+            .order_by(Account.email)
+            .all()
+        )
+        for row in rows:
+            accounts_to_login.append({
+                "id": row.id,
+                "email": row.email,
+                "password": _decrypt(row.password),
+                "totp_secret": _decrypt(row.totp_secret),
+                "recovery_email": _decrypt(row.recovery_email),
+                "notes": row.notes or "",
+            })
+
+    if not accounts_to_login:
+        await ws.send_json({"type": "result", "success": True, "message": "号池中所有账号都已有 cookies，无需登录", "duration_ms": 0})
+        return True
+
+    total = len(accounts_to_login)
+    await ws.send_json({"type": "step", "name": "批量登录", "status": "info", "message": f"共 {total} 个账号需要登录"})
+
+    success_count = 0
+    fail_list = []
+
+    for i, acct in enumerate(accounts_to_login):
+        if cancel_token.is_cancelled:
+            break
+
+        email = acct["email"]
+        step = _create_step_handler(msg_queue, i * 100)
+        step({"type": "step", "name": f"登录 {email}", "status": "running", "message": f"({i+1}/{total})"})
+
+        # 获取或创建浏览器配置
+        profile_id = None
+        with get_db_session() as db:
+            profile = db.query(BrowserProfile).filter(BrowserProfile.account_id == acct["id"]).first()
+            if profile:
+                profile_id = profile.id
+
+        if not profile_id:
+            try:
+                from features.browser.browserProfileDefaults import create_default_browser_profile
+                profile_data = {"name": email, "account_id": acct["id"]}
+                with get_db_session() as db:
+                    bp = BrowserProfile(name=email, account_id=acct["id"])
+                    db.add(bp)
+                    db.commit()
+                    db.refresh(bp)
+                    profile_id = bp.id
+            except Exception as exc:
+                fail_list.append(f"{email}: 创建浏览器配置失败 {exc}")
+                continue
+
+        # 启动浏览器
+        try:
+            if not browser_manager.is_running(profile_id):
+                with get_db_session() as db:
+                    from sqlalchemy.orm import joinedload
+                    fresh_profile = (
+                        db.query(BrowserProfile)
+                        .options(joinedload(BrowserProfile.account))
+                        .filter(BrowserProfile.id == profile_id)
+                        .first()
+                    )
+                    _ = fresh_profile.account
+                await browser_manager.launch(fresh_profile)
+        except Exception as exc:
+            fail_list.append(f"{email}: 启动浏览器失败 {exc}")
+            continue
+
+        # 登录
+        from services.verification import extract_verification_link
+        verification_url = extract_verification_link(acct["notes"]) or ""
+
+        task = asyncio.ensure_future(
+            run_auto_login(
+                profile_id, email, acct["password"], acct["totp_secret"],
+                acct["recovery_email"], verification_url,
+                on_step=step, cancel_token=cancel_token,
+            )
+        )
+        if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+            return False
+
+        result, error = _get_task_result(task)
+        if result and result.success:
+            success_count += 1
+            _save_cookies(acct["id"], profile_id)
+            step({"type": "step", "name": f"登录 {email}", "status": "ok", "message": "已保存 cookies"})
+        else:
+            fail_list.append(f"{email}: {result.message if result else error}")
+
+        # 关闭浏览器
+        try:
+            await browser_manager.stop(profile_id)
+        except Exception:
+            pass
+
+    summary = f"批量登录完成: 成功 {success_count}/{total}"
+    if fail_list:
+        summary += f" | 失败: {'; '.join(fail_list)}"
+    await ws.send_json({"type": "result", "success": success_count > 0, "message": summary, "duration_ms": 0})
     return True
 
 
@@ -1152,6 +1339,23 @@ async def automation_websocket(ws: WebSocket):
                     totp_secret=totp_secret,
                     remove_emails=rotate_remove,
                     new_count=rotate_count,
+                ):
+                    return
+                continue
+            elif action == ACTION_POOL_BATCH_LOGIN:
+                pool_gid = None
+                with get_db_session() as db:
+                    main_acct = db.query(Account).filter(Account.id == account_id).first()
+                    if main_acct and main_acct.family_group_id:
+                        pool_gid = main_acct.family_group_id
+                if not pool_gid:
+                    await ws.send_json({"type": "error", "message": "该账号没有关联的分组"})
+                    continue
+                if not await _handle_pool_batch_login(
+                    ws=ws,
+                    msg_queue=msg_queue,
+                    cancel_token=cancel_token,
+                    group_id=pool_gid,
                 ):
                     return
                 continue

@@ -36,6 +36,7 @@ class AccountService:
             "tags": account.tags or "",
             "group_name": account.group_name or "",
             "family_group_id": account.family_group_id,
+            "pool_group_id": account.pool_group_id,
             "is_family_owner": is_family_owner,
             "is_family_pending": bool(account.is_family_pending),
             "family_member_count": family_member_count,
@@ -102,8 +103,11 @@ class AccountService:
         rows = query.offset((page - 1) * page_size).limit(page_size).all()
         return [self._to_dict(row) for row in rows], total
 
-    def get_available(self, search: str = "", limit: int = 200) -> List[Dict]:
-        """获取可邀请的账号：未在家庭组 + (从未用过 或 今天用过的还能再用)"""
+    def get_available(self, search: str = "", limit: int = 200, pool_group_id: int = None) -> List[Dict]:
+        """获取可邀请的账号：未在家庭组 + (从未用过 或 今天用过的还能再用)
+
+        如果指定 pool_group_id，只返回该号池的账号。
+        """
         from datetime import date
         today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
 
@@ -112,6 +116,8 @@ class AccountService:
             # retired_at 为空（从未用过）或 retired_at >= 今天开始（今天用过还能再用）
             (Account.retired_at.is_(None)) | (Account.retired_at >= today_start),
         )
+        if pool_group_id is not None:
+            query = query.filter(Account.pool_group_id == pool_group_id)
         if search:
             query = query.filter(Account.email.ilike(f"%{search}%"))
         query = query.order_by(Account.email).limit(limit)
