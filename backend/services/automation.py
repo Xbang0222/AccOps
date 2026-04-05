@@ -63,7 +63,7 @@ def auto_login_sync(page, email: str, password: str, totp_secret: str = "",
         return tracker.result(False, f"登录失败: {email}", step="login")
 
 
-def create_family_group_sync(page, on_step=None) -> AutomationResult:
+def create_family_group_sync(page, on_step=None, cancel_token=None) -> AutomationResult:
     """创建家庭组 (纯 RPC)"""
     tracker = StepTracker("create_family", on_step)
 
@@ -90,7 +90,7 @@ def create_family_group_sync(page, on_step=None) -> AutomationResult:
         return tracker.result(False, f"异常: {e}", step="error")
 
 
-def send_family_invite_sync(page, invite_email: str, on_step=None) -> AutomationResult:
+def send_family_invite_sync(page, invite_email: str, on_step=None, cancel_token=None) -> AutomationResult:
     """发送家庭组邀请 (纯 RPC)"""
     tracker = StepTracker("send_invite", on_step)
 
@@ -112,7 +112,7 @@ def send_family_invite_sync(page, invite_email: str, on_step=None) -> Automation
         return tracker.result(False, f"异常: {e}", step="error")
 
 
-def accept_family_invite_sync(page, on_step=None) -> AutomationResult:
+def accept_family_invite_sync(page, on_step=None, cancel_token=None) -> AutomationResult:
     """接受家庭组邀请 (纯 RPC)"""
     tracker = StepTracker("accept_invite", on_step)
 
@@ -254,7 +254,7 @@ def leave_family_group_sync(page, password: str = "", totp_secret: str = "",
         return tracker.result(False, f"异常: {e}", step="error")
 
 
-def discover_family_group_sync(page, on_step=None) -> FamilyDiscoverResult:
+def discover_family_group_sync(page, on_step=None, cancel_token=None) -> FamilyDiscoverResult:
     """发现家庭组关系 (纯 RPC)"""
     cookies = browser_manager.get_cookies(_get_profile_id_from_page(page))
 

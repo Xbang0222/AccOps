@@ -2,7 +2,27 @@
 import client, { API_PREFIX } from './client';
 import type { Account, TOTPResponse } from '@/types';
 
-export const getAccounts = (search?: string, group?: string, tag?: string, page: number = 1, pageSize: number = 20, ownerOnly: boolean = false) => {
+export interface GetAccountsParams {
+  search?: string;
+  group?: string;
+  tag?: string;
+  page?: number;
+  pageSize?: number;
+  ownerOnly?: boolean;
+  sortBy?: string;
+  sortOrder?: string;
+}
+
+export const getAccounts = ({
+  search,
+  group,
+  tag,
+  page = 1,
+  pageSize = 20,
+  ownerOnly = false,
+  sortBy = 'created_at',
+  sortOrder = 'desc',
+}: GetAccountsParams = {}) => {
   const params = new URLSearchParams();
   if (search) params.append('search', search);
   if (group) params.append('group', group);
@@ -10,6 +30,8 @@ export const getAccounts = (search?: string, group?: string, tag?: string, page:
   params.append('page', String(page));
   params.append('page_size', String(pageSize));
   if (ownerOnly) params.append('owner_only', 'true');
+  params.append('sort_by', sortBy);
+  params.append('sort_order', sortOrder);
   return client.get<{ accounts: Account[]; total: number; page: number; page_size: number }>(`${API_PREFIX}/accounts?${params}`);
 };
 
@@ -44,3 +66,9 @@ export interface ImportResult {
 
 export const importAccounts = (text: string, tags?: string, group_name?: string, notes?: string) =>
   client.post<ImportResult>(`${API_PREFIX}/accounts/import`, { text, tags, group_name, notes });
+
+export const getAvailableAccounts = (search?: string) => {
+  const params = new URLSearchParams();
+  if (search) params.append('search', search);
+  return client.get<{ accounts: { id: number; email: string }[] }>(`${API_PREFIX}/accounts/available?${params}`);
+};

@@ -1,15 +1,20 @@
-import { Input, Modal, Select, Space } from 'antd'
+import { AutoComplete, Input, Modal, Select, Space, Typography } from 'antd'
 
 import type { AutomationOperationDefinition } from '@/features/automation/operationMeta'
 import type { GroupMemberOption } from '../utils'
 
+const { Text } = Typography
+
 interface GroupOperationModalProps {
   activeOp: AutomationOperationDefinition | null
+  availableAccountOptions: { label: string; value: string }[]
+  availableAccountsLoading: boolean
   formValues: Record<string, string>
   memberOptions: GroupMemberOption[]
   replaceNewEmail: string
   replaceOldEmail: string
   selectedEmails: string[]
+  onAvailableAccountSearch: (value: string) => void
   onCancel: () => void
   onChangeFormValue: (name: string, value: string) => void
   onChangeReplaceNewEmail: (value: string) => void
@@ -21,11 +26,14 @@ interface GroupOperationModalProps {
 
 export function GroupOperationModal({
   activeOp,
+  availableAccountOptions,
+  availableAccountsLoading,
   formValues,
   memberOptions,
   replaceNewEmail,
   replaceOldEmail,
   selectedEmails,
+  onAvailableAccountSearch,
   onCancel,
   onChangeFormValue,
   onChangeReplaceNewEmail,
@@ -48,18 +56,28 @@ export function GroupOperationModal({
     >
       <div style={{ marginTop: 12 }}>
         {activeOp?.key === 'family-invite' ? (
-          <Select
-            mode="tags"
-            style={{ width: '100%' }}
-            placeholder="输入或粘贴邮箱，回车添加（支持逗号、换行分隔）"
-            value={selectedEmails}
-            onChange={onChangeSelectedEmails}
-            onSearch={onSearchEmails}
-            tokenSeparators={[',', ';', '\n', '\t', ' ']}
-            open={false}
-            suffixIcon={null}
-            notFoundContent={null}
-          />
+          <>
+            <Select
+              mode="multiple"
+              style={{ width: '100%' }}
+              placeholder="搜索并选择账号，或直接输入邮箱回车添加"
+              value={selectedEmails}
+              onChange={onChangeSelectedEmails}
+              onSearch={(value) => {
+                onSearchEmails(value)
+                onAvailableAccountSearch(value)
+              }}
+              options={availableAccountOptions}
+              loading={availableAccountsLoading}
+              filterOption={false}
+              tokenSeparators={[',', ';', '\n', '\t']}
+              showSearch
+              notFoundContent={availableAccountsLoading ? '搜索中...' : '无匹配账号，可直接输入邮箱回车添加'}
+            />
+            <Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
+              下拉列表仅显示未加入家庭组的账号，也可直接输入外部邮箱
+            </Text>
+          </>
         ) : null}
 
         {activeOp?.key === 'family-remove' ? (
@@ -85,11 +103,13 @@ export function GroupOperationModal({
               optionFilterProp="label"
               showSearch
             />
-            <Input
-              placeholder="新成员邮箱（将被邀请）"
-              value={replaceNewEmail}
-              onChange={(event) => onChangeReplaceNewEmail(event.target.value)}
-              onPressEnter={onOk}
+            <AutoComplete
+              style={{ width: '100%' }}
+              placeholder="搜索并选择新成员，或直接输入邮箱"
+              value={replaceNewEmail || undefined}
+              onChange={onChangeReplaceNewEmail}
+              onSearch={onAvailableAccountSearch}
+              options={availableAccountOptions}
             />
           </Space>
         ) : null}

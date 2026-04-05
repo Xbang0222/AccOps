@@ -90,17 +90,20 @@ const GroupDetailPage: React.FC = () => {
         <GroupOperationLogPanel
           account={controller.selectedAccount}
           opState={controller.selectedOpState}
-          onCancel={() => controller.automation.cancel()}
+          onCancel={() => controller.automation.cancel(controller.selectedAccountId ?? undefined)}
         />
       </div>
 
       <GroupOperationModal
         activeOp={controller.activeOp}
+        availableAccountOptions={controller.availableAccountOptions}
+        availableAccountsLoading={controller.availableAccountsLoading}
         formValues={controller.formValues}
         memberOptions={controller.memberOptions}
         replaceNewEmail={controller.replaceNewEmail}
         replaceOldEmail={controller.replaceOldEmail}
         selectedEmails={controller.selectedEmails}
+        onAvailableAccountSearch={controller.handleAvailableAccountSearch}
         onCancel={() => {
           controller.setActiveOp(null)
           controller.setActiveAccountId(null)

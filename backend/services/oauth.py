@@ -107,7 +107,45 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
             if error:
                 return tracker.result(False, f"授权被拒绝: {error}", step="auth")
 
-            # 3) 密码重验证页面
+            # 3) 如果页面要求选择账号, 点击当前账号
+            if "accountchooser" in current_url or "selectaccount" in current_url:
+                account_clicked = False
+                # 策略1: data-identifier 属性 (Google v2)
+                account_btn = page.ele("@data-identifier", timeout=1)
+                if account_btn:
+                    try:
+                        account_btn.click()
+                        account_clicked = True
+                    except Exception:
+                        pass
+                # 策略2: data-email 属性 (Google v3)
+                if not account_clicked:
+                    account_btn = page.ele("@data-email", timeout=0.5)
+                    if account_btn:
+                        try:
+                            account_btn.click()
+                            account_clicked = True
+                        except Exception:
+                            pass
+                # 策略3: 账号列表项 (li[role] 或包含邮箱的可点击元素)
+                if not account_clicked:
+                    account_btn = (
+                        page.ele('li[data-authuser]', timeout=0.5)
+                        or page.ele('div[data-authuser]', timeout=0.5)
+                        or page.ele('text:@gmail.com', timeout=0.5)
+                    )
+                    if account_btn:
+                        try:
+                            account_btn.click()
+                            account_clicked = True
+                        except Exception:
+                            pass
+                if account_clicked:
+                    tracker.step("选择账号", "ok")
+                    time.sleep(3)
+                    continue
+
+            # 4) 密码重验证页面
             if not password_handled and is_password_page(page):
                 if not password:
                     return tracker.result(False, "需要密码重验证但账号无密码", step="password")
@@ -117,7 +155,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                 else:
                     return tracker.result(False, "密码验证失败", step="password")
 
-            # 4) 2FA/TOTP 验证页面
+            # 5) 2FA/TOTP 验证页面
             if not totp_handled and is_totp_page(page):
                 if handle_totp(page, totp_secret, tracker):
                     totp_handled = True
@@ -125,22 +163,11 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                 else:
                     return tracker.result(False, "2FA 验证失败", step="totp")
 
-            # 5) 尝试点击 OAuth 同意按钮
+            # 6) 尝试点击 OAuth 同意按钮
             if try_click_consent_buttons(page):
                 tracker.step("点击授权按钮", "ok")
                 time.sleep(3)
                 continue
-
-            # 6) 如果页面要求选择账号, 点击第一个
-            account_btn = page.ele("@data-identifier", timeout=0.5)
-            if account_btn:
-                try:
-                    account_btn.click()
-                    tracker.step("选择账号", "ok")
-                    time.sleep(3)
-                    continue
-                except Exception:
-                    pass
 
             # 7) 检查是否有 "Check your phone" 类型的等待提示 (Google Prompt)
             if "challenge" in current_url and not is_password_page(page) and not is_totp_page(page):
@@ -211,8 +238,10 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                     # Step 8: 自动手机号验证
                     tracker.step("自动接码验证", "info", "开始自动验证...")
                     verify_result = auto_phone_verify_sync(page, validation_url, on_step, cancel_token=cancel_token)
-                    if verify_result.get("success"):
-                        tracker.step("自动接码验证", "ok", verify_result.get("message", ""))
+                    verify_ok = verify_result.success if hasattr(verify_result, "success") else verify_result.get("success", False)
+                    verify_msg = verify_result.message if hasattr(verify_result, "message") else verify_result.get("message", "")
+                    if verify_ok:
+                        tracker.step("自动接码验证", "ok", verify_msg)
                         # 保存最终页面信息
                         credential["verify_final_url"] = page.url
                         try:
@@ -228,7 +257,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                         else:
                             tracker.step("重新探测", "fail", api_msg2)
                     else:
-                        tracker.step("自动接码验证", "fail", verify_result.get("message", "验证失败"))
+                        tracker.step("自动接码验证", "fail", verify_msg or "验证失败")
         except Exception as e:
             tracker.step("API 探测", "skip", f"探测异常: {e}")
 

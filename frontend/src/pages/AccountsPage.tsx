@@ -11,6 +11,8 @@ import {
   App,
   Typography,
 } from 'antd';
+import type { TablePaginationConfig } from 'antd';
+import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import type { ResizeCallbackData } from 'react-resizable';
 import {
   PlusOutlined,
@@ -63,6 +65,8 @@ const AccountsPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  const [sortField, setSortField] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // 导入
   const [importVisible, setImportVisible] = useState(false);
@@ -86,7 +90,16 @@ const AccountsPage: React.FC = () => {
   const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await getAccounts(searchText, groupFilter, tagFilter, currentPage, pageSize, ownerOnly);
+      const { data } = await getAccounts({
+        search: searchText,
+        group: groupFilter,
+        tag: tagFilter,
+        page: currentPage,
+        pageSize,
+        ownerOnly,
+        sortBy: sortField,
+        sortOrder,
+      });
       setAccounts(data.accounts);
       setTotal(data.total);
     } catch {
@@ -94,7 +107,7 @@ const AccountsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, groupFilter, msg, ownerOnly, pageSize, searchText, tagFilter]);
+  }, [currentPage, groupFilter, msg, ownerOnly, pageSize, searchText, sortField, sortOrder, tagFilter]);
 
   const loadFilters = useCallback(async () => {
     try {
@@ -193,6 +206,23 @@ const AccountsPage: React.FC = () => {
     }
   };
 
+  const handleTableChange = (
+    _pagination: TablePaginationConfig,
+    _filters: Record<string, FilterValue | null>,
+    sorter: SorterResult<Account> | SorterResult<Account>[],
+  ) => {
+    const s = Array.isArray(sorter) ? sorter[0] : sorter;
+    if (s.field && s.order) {
+      setSortField(s.field as string);
+      setSortOrder(s.order === 'ascend' ? 'asc' : 'desc');
+    } else {
+      // 取消排序时恢复默认
+      setSortField('created_at');
+      setSortOrder('desc');
+    }
+    setCurrentPage(1);
+  };
+
   const handleImport = async () => {
     if (!importText.trim()) { msg.warning('请输入要导入的账号信息'); return; }
     setImportLoading(true);
@@ -242,9 +272,13 @@ const AccountsPage: React.FC = () => {
 
   const columns = baseColumns.map((col) => {
     const key = (col as { key?: string }).key;
-    if (!key || !columnWidths[key]) return col;
-    return {
+    const colWithSort = {
       ...col,
+      ...(key === sortField ? { sortOrder: sortOrder === 'asc' ? 'ascend' as const : 'descend' as const } : { sortOrder: undefined }),
+    };
+    if (!key || !columnWidths[key]) return colWithSort;
+    return {
+      ...colWithSort,
       width: columnWidths[key],
       onHeaderCell: () => ({
         width: columnWidths[key],
@@ -312,6 +346,7 @@ const AccountsPage: React.FC = () => {
           size="small"
           scroll={{ x: 1100, y: 'calc(100vh - 260px)' }}
           pagination={false}
+          onChange={handleTableChange}
         />
       </div>
 

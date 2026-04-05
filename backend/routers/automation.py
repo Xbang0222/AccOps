@@ -149,7 +149,7 @@ def _sync_account_state_after_login(
     totp_secret: str = "",
     recovery_email: str = "",
 ):
-    """登录成功后立即同步账号状态，避免前端仍显示空白状态。"""
+    """登录成功后立即同步账号状态（订阅、地区），但不修改已有的分组关系。"""
     try:
         cookies = browser_manager.get_cookies(profile_id)
         if not cookies:
@@ -169,7 +169,8 @@ def _sync_account_state_after_login(
             logger.warning(f"[login-sync] account #{account_id} 状态同步失败: {result.message}")
             return
 
-        sync_group_from_discover(account_id, result)
+        # 仅同步订阅状态和地区，不触发分组同步（避免覆盖用户手动设置的分组关系）
+        # 分组同步应通过用户主动执行 discover 操作触发
         _save_subscription_status(account_id, result.subscription_status, result.subscription_expiry)
         _save_country(account_id, result.country, result.country_cn)
     except Exception as e:

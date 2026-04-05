@@ -19,10 +19,14 @@ async def list_accounts(
     page: int = 1,
     page_size: int = 20,
     owner_only: bool = False,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
     svc: AccountService = Depends(get_account_service),
 ):
-    """获取账号列表（支持搜索/筛选/分页）"""
-    accounts, total = svc.get_all(search, group, tag, page, page_size, owner_only)
+    """获取账号列表（支持搜索/筛选/分页/排序）"""
+    accounts, total = svc.get_all(
+        search, group, tag, page, page_size, owner_only, sort_by, sort_order,
+    )
     return {"accounts": accounts, "total": total, "page": page, "page_size": page_size}
 
 
@@ -36,6 +40,16 @@ async def list_groups(svc: AccountService = Depends(get_account_service)):
 async def list_tags(svc: AccountService = Depends(get_account_service)):
     """获取所有标签"""
     return {"tags": svc.get_all_tags()}
+
+
+@router.get("/available")
+async def list_available_accounts(
+    search: str = "",
+    svc: AccountService = Depends(get_account_service),
+):
+    """获取未加入家庭组的可用账号（仅返回 id + email，供邀请选择）"""
+    accounts = svc.get_available(search)
+    return {"accounts": accounts}
 
 
 @router.get("/{account_id}")

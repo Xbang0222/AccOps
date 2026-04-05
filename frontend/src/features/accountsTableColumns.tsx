@@ -65,6 +65,7 @@ export function createAccountTableColumns({
       key: 'email',
       width: 280,
       ellipsis: true,
+      sorter: true,
       render: (email: string, record) => (
         <Flex align="center" gap={6}>
           <Text style={{ cursor: 'pointer', fontSize: 13 }} onClick={() => onCopyText(email, '邮箱')}>
@@ -161,6 +162,7 @@ export function createAccountTableColumns({
       dataIndex: 'created_at',
       key: 'created_at',
       width: 100,
+      sorter: true,
       render: (value: string | null) => {
         if (!value) {
           return null

@@ -52,7 +52,7 @@ def check_age_verification(page, on_step=None) -> str:
         tracker.step("检测年龄认证", "skip", f"无法到达认证页面: {url[:80]}")
         return "unknown"
 
-    # Layer 1: 认证方式链接检测
+    # Layer 1: 认证方式链接检测 (CSS 选择器)
     has_doc = bool(page.ele(SEL_LINK_DOCUMENT, timeout=2))
     has_card = bool(page.ele(SEL_LINK_CREDIT_CARD, timeout=1))
     has_selfie = bool(page.ele(SEL_LINK_SELFIE, timeout=1))
@@ -61,7 +61,19 @@ def check_age_verification(page, on_step=None) -> str:
         tracker.step("检测年龄认证", "fail", "未认证 (检测到认证方式选择)")
         return "not_verified"
 
-    # Layer 2: 已认证页面元素
+    # Layer 2: 认证方式文本检测 (Google c-wiz 渲染后可能没有标准 <a> 标签)
+    try:
+        has_text_id = bool(page.ele('text:Use your ID', timeout=1))
+        has_text_card = bool(page.ele('text:Use your credit card', timeout=1))
+        has_text_selfie = bool(page.ele('text:Take a selfie', timeout=1))
+
+        if has_text_id or has_text_card or has_text_selfie:
+            tracker.step("检测年龄认证", "fail", "未认证 (检测到认证方式文本)")
+            return "not_verified"
+    except Exception:
+        pass
+
+    # Layer 3: 已认证页面元素
     has_verified = bool(page.ele(SEL_VERIFIED_CONTAINER, timeout=2))
     has_unverified = bool(page.ele(SEL_UNVERIFIED_SUBTITLE, timeout=1))
 
@@ -69,15 +81,34 @@ def check_age_verification(page, on_step=None) -> str:
         tracker.step("检测年龄认证", "ok", "已认证")
         return "verified"
 
-    # Layer 3: 文本回退
+    # Layer 4: 文本回退 (搜索页面 HTML)
     try:
         text = (page.html or "").lower()
+
+        # 已认证关键词
         if "you're all set" in text or "your age is verified" in text:
             tracker.step("检测年龄认证", "ok", "已认证 (文本检测)")
             return "verified"
-        if "choose how to verify" in text:
-            tracker.step("检测年龄认证", "fail", "未认证 (文本检测)")
-            return "not_verified"
+
+        # 未认证关键词
+        not_verified_keywords = [
+            "choose how to verify",
+            "verify your age",
+            "use your id",
+            "use your credit card",
+            "take a selfie",
+        ]
+        for keyword in not_verified_keywords:
+            if keyword in text:
+                tracker.step("检测年龄认证", "fail", f"未认证 (文本: {keyword})")
+                return "not_verified"
+    except Exception:
+        pass
+
+    # 全部检测失败，记录 debug 信息
+    try:
+        page_text = (page.html or "")[:500]
+        logger.warning(f"年龄认证状态无法判断, URL: {url}, HTML片段: {page_text}")
     except Exception:
         pass
 
@@ -326,5 +357,11 @@ def check_and_verify_age(page, on_step=None) -> dict:
     result = execute_credit_card_verification(
         page, card_number, card_expiry, card_cvv, card_zip, on_step
     )
-    result["status"] = "verified" if result.get("success") else "not_verified"
-    return result
+    # execute_credit_card_verification 返回 AutomationResult dataclass, 转为 dict
+    success = result.success if hasattr(result, "success") else result.get("success", False)
+    message = result.message if hasattr(result, "message") else result.get("message", "")
+    return {
+        "success": success,
+        "message": message,
+        "status": "verified" if success else "not_verified",
+    }

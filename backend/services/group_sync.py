@@ -208,13 +208,27 @@ def _sync_manager_discover(db: Session, account: Account, discover_result) -> No
             _sync_members_from_discover(db, group.id, discover_result.members)
             return
 
+        # 账号在一个分组里但不是管理员 → 可能是用户手动创建的分组，
+        # 检查是否有该账号作为管理员的其他分组
+        existing_group = db.query(Group).filter(Group.main_account_id == account.id).first()
+        if existing_group:
+            # 复用已有分组，但不覆盖用户设置的名称
+            existing_group.member_count = discover_result.member_count
+            existing_group.updated_at = datetime.now(timezone.utc)
+            account.family_group_id = existing_group.id
+            account.updated_at = datetime.now(timezone.utc)
+            logger.info("[discover_sync] %s 旧分组无效, 切换到已有管理员分组 #%s", account.email, existing_group.id)
+            _sync_members_from_discover(db, existing_group.id, discover_result.members)
+            return
+
         logger.info("[discover_sync] %s 旧分组 #%s 无效, 将重建", account.email, account.family_group_id)
         account.family_group_id = None
 
+    # 查找该账号已有的管理员分组
     group = db.query(Group).filter(Group.main_account_id == account.id).first()
     if group:
         group.member_count = discover_result.member_count
-        group.name = f"{account.email} 的家庭组"
+        # 不覆盖用户手动设置的分组名
         group.updated_at = datetime.now(timezone.utc)
         account.family_group_id = group.id
         account.updated_at = datetime.now(timezone.utc)

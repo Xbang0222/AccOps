@@ -6,6 +6,7 @@ import {
   createBrowserProfile,
   discoverFamily,
   downloadOAuthCredential,
+  getAvailableAccounts,
   getBrowserProfiles,
   getGroup,
   getOAuthCredential,
@@ -50,6 +51,9 @@ export function useGroupDetailController(groupId: number) {
   const [replaceOldEmail, setReplaceOldEmail] = useState('')
   const [replaceNewEmail, setReplaceNewEmail] = useState('')
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
+  const [availableAccountOptions, setAvailableAccountOptions] = useState<{ label: string; value: string }[]>([])
+  const [availableAccountsLoading, setAvailableAccountsLoading] = useState(false)
+  const availableSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const wsAccountIdRef = useRef<number | null>(null)
 
@@ -81,15 +85,24 @@ export function useGroupDetailController(groupId: number) {
     void loadBrowserStatus()
   }, [loadBrowserStatus, loadGroup])
 
+  // 清理防抖 timer
+  useEffect(() => {
+    return () => {
+      if (availableSearchTimer.current) {
+        clearTimeout(availableSearchTimer.current)
+      }
+    }
+  }, [])
+
   const setAccountOpPatch = useCallback((accountId: number, patch: Partial<ReturnType<typeof createAccountOpState>>) => {
     setOpStates((previous) => updateAccountOpState(previous, accountId, patch))
   }, [])
 
   const automation = useAutomationWs({
-    onSuccess: (_opKey, message) => {
-      const accountId = wsAccountIdRef.current
-      if (accountId !== null) {
-        setAccountOpPatch(accountId, {
+    onSuccess: (_opKey, message, accountId) => {
+      const id = accountId ?? wsAccountIdRef.current
+      if (id !== null) {
+        setAccountOpPatch(id, {
           runningOpKey: null,
           resultMsg: message,
           resultSuccess: true,
@@ -98,10 +111,10 @@ export function useGroupDetailController(groupId: number) {
       msg.success(message)
       void loadGroup()
     },
-    onFail: (_opKey, message) => {
-      const accountId = wsAccountIdRef.current
-      if (accountId !== null) {
-        setAccountOpPatch(accountId, {
+    onFail: (_opKey, message, accountId) => {
+      const id = accountId ?? wsAccountIdRef.current
+      if (id !== null) {
+        setAccountOpPatch(id, {
           runningOpKey: null,
           resultMsg: message,
           resultSuccess: false,
@@ -109,10 +122,10 @@ export function useGroupDetailController(groupId: number) {
       }
       msg.warning(message)
     },
-    onError: (_opKey, message) => {
-      const accountId = wsAccountIdRef.current
-      if (accountId !== null) {
-        setAccountOpPatch(accountId, {
+    onError: (_opKey, message, accountId) => {
+      const id = accountId ?? wsAccountIdRef.current
+      if (id !== null) {
+        setAccountOpPatch(id, {
           runningOpKey: null,
           resultMsg: message,
           resultSuccess: false,
@@ -196,7 +209,7 @@ export function useGroupDetailController(groupId: number) {
 
   const handleToggleBrowser = useCallback((accountId: number, running: boolean) => {
     if (running) {
-      automation.cancel()
+      automation.cancel(accountId)
       void handleStopBrowser(accountId)
       return
     }
@@ -251,6 +264,29 @@ export function useGroupDetailController(groupId: number) {
     }
   }, [loadGroup, msg, setAccountOpPatch])
 
+  const loadAvailableAccounts = useCallback(async (search: string = '') => {
+    setAvailableAccountsLoading(true)
+    try {
+      const { data } = await getAvailableAccounts(search)
+      setAvailableAccountOptions(
+        data.accounts.map((a) => ({ label: a.email, value: a.email })),
+      )
+    } catch {
+      // noop
+    } finally {
+      setAvailableAccountsLoading(false)
+    }
+  }, [])
+
+  const handleAvailableAccountSearch = useCallback((value: string) => {
+    if (availableSearchTimer.current) {
+      clearTimeout(availableSearchTimer.current)
+    }
+    availableSearchTimer.current = setTimeout(() => {
+      void loadAvailableAccounts(value)
+    }, 300)
+  }, [loadAvailableAccounts])
+
   const openOperationModal = useCallback((accountId: number, operation: AutomationOperationDefinition) => {
     setFormValues({})
     setSelectedEmails([])
@@ -258,7 +294,11 @@ export function useGroupDetailController(groupId: number) {
     setReplaceNewEmail('')
     setActiveOp(operation)
     setActiveAccountId(accountId)
-  }, [])
+    // 打开邀请或替换弹窗时预加载可用账号
+    if (operation.key === 'family-invite' || operation.key === 'replace') {
+      void loadAvailableAccounts()
+    }
+  }, [loadAvailableAccounts])
 
   const handleOperationClick = useCallback((accountId: number, operation: AutomationOperationDefinition) => {
     if (operation.key === 'family-discover') {
@@ -421,10 +461,13 @@ export function useGroupDetailController(groupId: number) {
   return {
     activeOp,
     automation,
+    availableAccountOptions,
+    availableAccountsLoading,
     browserLoading,
     browserRunning,
     formValues,
     group,
+    handleAvailableAccountSearch,
     handleClearBrowserData,
     handleCopyOAuthJson,
     handleDownloadOAuth,

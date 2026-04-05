@@ -60,9 +60,13 @@ class AccountService:
         except Exception:
             return ""
 
+    # 允许排序的字段白名单
+    SORTABLE_FIELDS = {"email", "created_at", "updated_at", "group_name"}
+
     def get_all(
         self, search: str = "", group_filter: str = "", tag_filter: str = "",
         page: int = 1, page_size: int = 20, owner_only: bool = False,
+        sort_by: str = "created_at", sort_order: str = "desc",
     ) -> tuple[List[Dict], int]:
         from models.orm import Group
 
@@ -84,10 +88,28 @@ class AccountService:
                 ),
             )
 
-        query = query.order_by(Account.email)
+        # 动态排序（白名单校验防注入）
+        if sort_by not in self.SORTABLE_FIELDS:
+            sort_by = "created_at"
+        if sort_order not in ("asc", "desc"):
+            sort_order = "desc"
+        column = getattr(Account, sort_by)
+        order_clause = column.desc() if sort_order == "desc" else column.asc()
+        query = query.order_by(order_clause)
+
         total = query.count()
         rows = query.offset((page - 1) * page_size).limit(page_size).all()
         return [self._to_dict(row) for row in rows], total
+
+    def get_available(self, search: str = "") -> List[Dict]:
+        """获取未加入家庭组的可用账号（轻量，仅 id + email）"""
+        query = self.db.query(Account.id, Account.email).filter(
+            Account.family_group_id.is_(None),
+        )
+        if search:
+            query = query.filter(Account.email.ilike(f"%{search}%"))
+        query = query.order_by(Account.email).limit(200)
+        return [{"id": row.id, "email": row.email} for row in query.all()]
 
     def get_by_id(self, account_id: int) -> Optional[Dict]:
         row = self.db.query(Account).get(account_id)
