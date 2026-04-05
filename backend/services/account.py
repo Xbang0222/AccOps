@@ -46,6 +46,7 @@ class AccountService:
             "has_oauth_credential": bool(account.oauth_credential_json),
             "validation_url": self._get_validation_url(account.oauth_credential_json),
             "notes": account.notes or "",
+            "retired_at": account.retired_at.isoformat() if account.retired_at else None,
             "created_at": account.created_at.isoformat() if account.created_at else None,
             "updated_at": account.updated_at.isoformat() if account.updated_at else None,
         }
@@ -102,9 +103,10 @@ class AccountService:
         return [self._to_dict(row) for row in rows], total
 
     def get_available(self, search: str = "") -> List[Dict]:
-        """获取未加入家庭组的可用账号（轻量，仅 id + email）"""
+        """获取可邀请的账号：未在家庭组 + 未被用过（retired_at 为空）"""
         query = self.db.query(Account.id, Account.email).filter(
             Account.family_group_id.is_(None),
+            Account.retired_at.is_(None),
         )
         if search:
             query = query.filter(Account.email.ilike(f"%{search}%"))

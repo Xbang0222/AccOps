@@ -20,6 +20,7 @@ export interface Account {
   has_oauth_credential?: boolean;
   validation_url?: string;
   notes?: string;
+  retired_at?: string;
   created_at?: string;
   updated_at?: string;
 }

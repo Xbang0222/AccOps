@@ -158,6 +158,16 @@ export function createAccountTableColumns({
         notes ? <Text type="secondary" style={{ fontSize: 12 }}>{notes}</Text> : null,
     },
     {
+      title: '状态',
+      dataIndex: 'retired_at',
+      key: 'retired_at',
+      width: 70,
+      render: (retired_at: string | null) =>
+        retired_at ? (
+          <Tag color="default" style={{ margin: 0, fontSize: 11 }}>已用过</Tag>
+        ) : null,
+    },
+    {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',

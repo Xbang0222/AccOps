@@ -332,8 +332,12 @@ def _upsert_discovered_member(db: Session, group_id: int, email: str, is_pending
 
 
 def _clear_account_family_state(account: Account) -> None:
+    now = datetime.now(timezone.utc)
+    # 只有实际加入过家庭组的账号（非 pending）才标记为已用过
+    if account.family_group_id and not account.is_family_pending:
+        account.retired_at = now
     account.family_group_id = None
     account.is_family_pending = False
     account.subscription_status = ""
     account.subscription_expiry = ""
-    account.updated_at = datetime.now(timezone.utc)
+    account.updated_at = now
