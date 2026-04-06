@@ -113,11 +113,17 @@ class AccountService:
 
         query = self.db.query(Account.id, Account.email).filter(
             Account.family_group_id.is_(None),
+            Account.pool_group_id.is_(None),
             # retired_at 为空（从未用过）或 retired_at >= 今天开始（今天用过还能再用）
             (Account.retired_at.is_(None)) | (Account.retired_at >= today_start),
         )
         if pool_group_id is not None:
-            query = query.filter(Account.pool_group_id == pool_group_id)
+            # 查号池内的可用号时，放开 pool_group_id 限制
+            query = self.db.query(Account.id, Account.email).filter(
+                Account.family_group_id.is_(None),
+                Account.pool_group_id == pool_group_id,
+                (Account.retired_at.is_(None)) | (Account.retired_at >= today_start),
+            )
         if search:
             query = query.filter(Account.email.ilike(f"%{search}%"))
         query = query.order_by(Account.email).limit(limit)
