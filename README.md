@@ -8,33 +8,55 @@
   <em>Google 账号批量管理与家庭组自动化操作平台</em>
 </p>
 
+<p align="center">
+  <a href="#features">功能</a> ·
+  <a href="#quick-start">快速开始</a> ·
+  <a href="#configuration">配置</a> ·
+  <a href="#architecture">架构</a> ·
+  <a href="#license">许可证</a>
+</p>
+
 ---
-
-## Overview
-
-AccOps 是一个自托管的 Google 账号批量管理系统，将**浏览器自动化**与**直接 RPC 调用**相结合，实现家庭组全生命周期管理。
-
-浏览器（DrissionPage）仅负责登录和密码重验证，所有家庭组操作均通过 httpx 直接调用 Google 内部 `batchexecute` RPC 完成——无需页面交互，速度快、稳定性高。
-
-## Documentation
-
-- [架构说明](docs/ARCHITECTURE.md)
-- [维护与扩展指南](docs/MAINTENANCE_GUIDE.md)
-- [家庭组 API 记录](docs/FAMILY_GROUP_API.md)
-- [重构计划记录](docs/plans/2026-04-04-engineering-refactor-plan.md)
 
 ## Features
 
-- **账号管理** — 邮箱、密码、辅助邮箱、2FA 密钥集中存储，实时 TOTP 验证码生成
-- **分组管理** — 主号 + 子号分组体系，卡片列表 + 实时日志面板
-- **家庭组自动化** — 创建/删除家庭组、发送/接受邀请、移除/替换成员、同步状态
-- **OAuth 自动授权** — 自动完成 OAuth 流程，获取凭证并探测 API 可用性
-- **自动手机号验证** — API 探测触发验证时，自动购买号码、输入验证码、完成验证
-- **接码管理** — 多提供商支持（HeroSMS / SMS-Bus），国家/服务/价格查询，完整购买生命周期
-- **订阅检测** — 识别 Google One AI Ultra 订阅状态及到期日，主号状态自动传播给组内子号
-- **实时反馈** — WebSocket 推送自动化步骤进度，调试模式下每步截图 + 保存页面源码
-- **暗黑模式** — 三段式主题切换（跟随系统 / 浅色 / 深色），全组件适配 Ant Design design tokens
-- **可拖拽列宽** — 账号表格支持 Excel 风格的列宽拖拽调整
+### 账号管理
+- 邮箱、密码、辅助邮箱、2FA 密钥集中存储
+- 实时 TOTP 验证码生成与一键复制
+- 批量导入（支持多种格式，智能识别字段）
+- 服务端排序（按创建时间、邮箱等）
+- 使用状态追踪（`今日可复用` / `已用完`）
+
+### 分组与号池管理
+- 主号 + 子号分组体系，卡片列表 + 实时日志面板
+- **号池管理** — 每个主号独立的备用号池，互不干扰
+- **一键轮换** — 批量移除旧子号 → 从号池自动选取 → 邀请 → Cookies RPC 接受 → Discover 验证
+- **当日复用** — 子号同一天内可反复轮换使用，次日进入冷却期
+- **批量登录** — 一键登录号池中所有无 Cookies 的账号
+
+### 家庭组自动化
+- 创建/删除家庭组、发送/接受邀请、移除/替换成员
+- 批量邀请 + 批量移除，支持多账号并行操作
+- 同步状态（Discover），订阅状态自动传播
+- 邀请时可搜索下拉选择账号（仅显示可用号）
+
+### OAuth 与验证
+- OAuth 自动授权（支持 Google v2/v3 账号选择页面）
+- 年龄认证自动检测（4层检测 + 信用卡自动填卡）
+- 手机号自动验证（接码平台自动购号 → 输入 → 验证）
+- API 可用性探测
+
+### 接码管理
+- 多提供商支持（HeroSMS / SMS-Bus）
+- 国家/服务/价格查询
+- 完整购买生命周期管理
+
+### 其他
+- **并行操作** — 多个账号可同时执行自动化任务，互不干扰
+- **实时反馈** — WebSocket 推送步骤进度，调试模式下截图 + 页面源码
+- **暗黑模式** — 三段式主题切换（跟随系统 / 浅色 / 深色）
+- **可拖拽列宽** — 账号表格支持 Excel 风格列宽调整
+- **数据安全** — 所有敏感字段 AES-256-GCM 加密存储
 
 ## Tech Stack
 
@@ -46,6 +68,85 @@ AccOps 是一个自托管的 Google 账号批量管理系统，将**浏览器自
 | HTTP RPC | httpx · Google `batchexecute` |
 | 安全 | JWT · bcrypt · AES-256-GCM |
 | 包管理 | uv (后端) · pnpm (前端) |
+
+## Quick Start
+
+### 环境要求
+
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL
+- Chrome / Chromium
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/Xbang0222/AccOps.git
+cd AccOps
+```
+
+### 2. 配置环境变量
+
+```bash
+cp backend/.env.example backend/.env
+# 编辑 backend/.env 填入你的配置
+```
+
+### 3. 启动后端
+
+```bash
+cd backend
+uv sync
+uv run python run.py
+```
+
+API 文档：http://localhost:8000/docs
+
+### 4. 启动前端
+
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
+
+访问：http://localhost:5173
+
+### 5. 首次使用
+
+1. 打开 http://localhost:5173
+2. 设置主密码（用于 JWT 认证和数据加密，**无法找回**）
+3. 添加 Google 账号（手动或批量导入）
+4. 创建分组，设置主号
+
+## Configuration
+
+所有配置通过 `backend/.env` 文件管理：
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+| 变量 | 必填 | 说明 |
+|------|:---:|------|
+| `GAM_DATABASE_URL` | ✅ | PostgreSQL 连接串 |
+| `GAM_SECRET_KEY` | ✅ | JWT 签名密钥（随机字符串） |
+| `GAM_OAUTH_CLIENT_ID` | ✅ | Google OAuth Client ID |
+| `GAM_OAUTH_CLIENT_SECRET` | ✅ | Google OAuth Client Secret |
+| `GAM_TOKEN_EXPIRE_MINUTES` | | Token 有效期，默认 `480` 分钟 |
+| `GAM_CORS_ORIGINS` | | CORS 允许源，默认 `http://localhost:5173` |
+| `GAM_HOST` | | 监听地址，默认 `127.0.0.1` |
+| `GAM_PORT` | | 监听端口，默认 `8000` |
+
+### 运行时设置
+
+通过系统设置页面管理（存储在数据库 `config` 表）：
+
+| 设置项 | 说明 |
+|--------|------|
+| `debug_mode` | 调试模式：详细日志、截图、页面源码 |
+| `headless_mode` | 无头浏览器（自动登录时强制关闭，Google 会拦截） |
+| `default_sms_provider_id` | 默认接码提供商 |
 
 ## Architecture
 
@@ -67,14 +168,23 @@ AccOps 是一个自托管的 Google 账号批量管理系统，将**浏览器自
                     └──────────────────────────────────────────────┘
 ```
 
-### Cookies 自动恢复机制
+### 设计原则
 
-当 Cookies 过期时，系统执行 4 级回退：
+- **浏览器最小化** — DrissionPage 仅负责登录和密码重验证，其余全部走纯 HTTP RPC
+- **Cookies 自动恢复** — 4 级回退：数据库 → 运行中浏览器 → 自动登录 → 报错
+- **并行友好** — WebSocket 连接池，每个账号独立管理，互不干扰
+- **号池隔离** — 每个主号独立号池，轮换操作不跨池
 
-1. **数据库 Cookies** → 直接使用（最快）
-2. **运行中浏览器** → 从活跃浏览器实例提取
-3. **自动登录** → 启动浏览器 → 登录 → 获取新 Cookies → 关闭
-4. **报错** → 提示用户手动处理
+### 轮换工作流
+
+```
+号池添加备用号 → 批量登录(保存cookies) → 轮换
+                                         ├── 阶段1: 移除旧子号 (rapt + RPC)
+                                         ├── 阶段2: 从号池选取新子号
+                                         ├── 阶段3: 批量邀请 (RPC)
+                                         ├── 阶段4: Cookies RPC 接受邀请
+                                         └── 阶段5: Discover 验证实际成员
+```
 
 ### 自动化函数
 
@@ -90,184 +200,64 @@ AccOps 是一个自托管的 Google 账号批量管理系统，将**浏览器自
 | `oauth_sync` | OAuth 授权 + API 探测 | DrissionPage + httpx |
 | `auto_phone_verify_sync` | 自动手机号验证 | DrissionPage + SMS API |
 
-## Getting Started
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL
-- Chrome / Chromium
-
-### Backend
-
-```bash
-cd backend
-uv sync
-
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入你的配置（数据库密码、OAuth 密钥等）
-
-# 启动
-uv run python run.py
-```
-
-API 文档：http://localhost:8000/docs
-
-测试：
-
-```bash
-cd backend
-uv run python -m unittest discover -s tests -p "test_*.py"
-uv run python -m compileall app.py config.py deps.py core models routers services utils
-```
-
-### Frontend
-
-```bash
-cd frontend
-pnpm install
-pnpm dev
-```
-
-访问：http://localhost:5173
-
-开发模式下前端默认通过 Vite 代理把 `/api` 请求转发到后端，不需要在 `.env` 里再写死 `VITE_API_BASE_URL` 或 `VITE_WS_BASE_URL`。
-
-如果后端端口变了，只需要改：
-
-```bash
-cd frontend
-export VITE_DEV_PROXY_TARGET="http://127.0.0.1:9000"
-pnpm dev
-```
-
-如果前端访问地址也变了，例如改成 `http://localhost:3000` 或局域网域名，需要同步调整后端 `GAM_CORS_ORIGINS`。
-
-### Production Build
-
-```bash
-cd frontend
-pnpm lint
-pnpm test:run
-pnpm build
-# 产物在 dist/
-```
-
-## Configuration
-
-所有配置通过环境变量或 `backend/.env` 文件管理。首次使用请复制模板：
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `GAM_DATABASE_URL` | ✅ | PostgreSQL 连接串 |
-| `GAM_SECRET_KEY` | ✅ | JWT 签名密钥（随机字符串） |
-| `GAM_OAUTH_CLIENT_ID` | ✅ | Google OAuth Client ID |
-| `GAM_OAUTH_CLIENT_SECRET` | ✅ | Google OAuth Client Secret |
-| `GAM_TOKEN_EXPIRE_MINUTES` | | Token 有效期，默认 480 分钟 |
-| `GAM_CORS_ORIGINS` | | CORS 允许源，默认 `http://localhost:5173` |
-| `GAM_HOST` | | 监听地址，默认 `127.0.0.1` |
-| `GAM_PORT` | | 监听端口，默认 `8000` |
-| `VITE_DEV_PROXY_TARGET` | | 前端代理目标，默认 `http://127.0.0.1:8000` |
-
-### Development Connectivity
-
-为避免本地开发时反复出现“无法连接服务器”，当前约定如下：
-
-- 前端默认走同源 `/api`，由 Vite 开发服务器代理到后端。
-- WebSocket 默认跟随当前页面来源生成 `ws://` 或 `wss://` 地址，不再写死 `127.0.0.1:8000`。
-- 后端默认同时允许 `http://localhost:5173` 和 `http://127.0.0.1:5173` 两种本地来源。
-
-因此以后换端口时，通常只需要改配置，不需要改代码：
-
-```bash
-# 后端
-export GAM_PORT="9000"
-export GAM_CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
-
-# 前端
-export VITE_DEV_PROXY_TARGET="http://127.0.0.1:9000"
-```
-
-如果前端本身也换端口，例如 `3000`，则把 `GAM_CORS_ORIGINS` 一并改成对应来源：
-
-```bash
-export GAM_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
-```
-
-### Runtime Settings
-
-系统设置存储在数据库 `config` 表中，通过设置页面管理：
-
-| 设置项 | 说明 |
-|--------|------|
-| `debug_mode` | 调试模式：每个自动化步骤输出详细日志、截图、页面源码 |
-| `headless_mode` | 无头浏览器模式（自动登录时强制关闭，Google 会拦截无头登录） |
-| `default_sms_provider_id` | 默认接码提供商 |
-
 ## Project Structure
 
 ```
 backend/
-├── app.py                      # FastAPI 入口，路由注册
-├── config.py                   # 环境变量配置
-├── deps.py                     # 依赖注入 (JWT, AppState)
-├── run.py                      # 启动脚本
+├── app.py                      # FastAPI 入口
+├── config.py                   # 环境变量配置 (.env 自动加载)
+├── core/constants.py           # 全局常量 (选择器、RPC ID、OAuth)
 ├── models/
-│   ├── database.py             # SQLAlchemy 引擎
-│   ├── orm.py                  # ORM 模型
-│   └── schemas.py              # Pydantic schemas
+│   ├── orm.py                  # ORM 模型 (Account, Group, BrowserProfile...)
+│   └── schemas.py              # Pydantic 请求/响应模型
 ├── routers/
-│   ├── auth.py                 # 认证
-│   ├── accounts.py             # 账号管理
-│   ├── groups.py               # 分组管理
-│   ├── dashboard.py            # 仪表盘
+│   ├── accounts.py             # 账号管理 (CRUD + 排序 + 可用号查询)
+│   ├── groups.py               # 分组管理 (CRUD + 号池管理)
+│   ├── automation.py           # 自动化 (WebSocket + 轮换 + 批量登录)
 │   ├── browser.py              # 浏览器配置
-│   ├── automation.py           # 自动化 (REST + WebSocket)
-│   ├── settings.py             # 系统设置
-│   └── sms.py                  # 接码管理
+│   ├── sms.py                  # 接码管理
+│   └── settings.py             # 系统设置
 ├── services/
-│   ├── account.py              # 账号 CRUD
-│   ├── auth.py                 # 认证逻辑
-│   ├── automation.py           # StepTracker + 自动化函数
+│   ├── automation.py           # 自动化核心逻辑
 │   ├── browser.py              # DrissionPage 浏览器管理
-│   ├── family_api.py           # Google Family RPC 封装
-│   ├── group.py                # 分组 + 成员管理
-│   ├── oauth.py                # OAuth + API 探测 + 自动验证
-│   ├── sms_api.py              # 接码平台 API
-│   ├── age_verification.py     # 年龄验证
-│   └── verification.py         # 验证链接提取
-└── utils/
-    └── crypto.py               # AES-256-GCM 加密
+│   ├── family_api.py           # Google Family batchexecute RPC
+│   ├── group_sync.py           # 家庭组与本地分组同步
+│   ├── oauth.py                # OAuth + 手机号验证
+│   ├── age_verification.py     # 年龄认证检测 + 信用卡自动填卡
+│   └── sms_api.py              # 接码平台 API (HeroSMS / SMS-Bus)
+└── utils/crypto.py             # AES-256-GCM 加密
 
 frontend/src/
-├── App.tsx                     # 应用入口 (ThemeProvider 包装)
-├── main.tsx                    # React 入口
 ├── api/                        # Axios 客户端 + API 封装
-├── features/                   # 领域逻辑 (automation / browser / group-detail / sms)
-├── pages/                      # 页面组件
-├── components/                 # 通用组件 (ResizableTitle 等)
-├── layouts/                    # 布局组件 (侧边栏 + 主题切换)
-├── hooks/                      # 自定义 Hooks (useThemeMode / useAutomationWs)
-├── theme/                      # Ant Design 主题配置 (浅色/深色双主题)
-├── types/                      # TypeScript 类型
-└── utils/                      # 工具函数
+├── features/
+│   ├── automation/             # 自动化操作定义
+│   ├── group-detail/           # 分组详情 (卡片 + 日志 + 操作弹窗)
+│   └── browser/                # 浏览器配置
+├── pages/                      # 页面 (账号/分组/接码/设置)
+├── hooks/
+│   ├── useAutomationWs.ts      # WebSocket 多连接管理
+│   └── useThemeMode.tsx        # 主题模式
+└── theme/                      # Ant Design 双主题配置
 ```
 
 ## Important Notes
 
 > [!CAUTION]
-> 首次登录需设置主密码，此密码用于 JWT 认证及数据加密，**无法找回**，请妥善保管。
+> 首次登录需设置主密码，用于 JWT 认证及数据加密，**无法找回**，请妥善保管。
 
 > [!WARNING]
 > Google 登录不支持无头浏览器模式（会被反检测拦截）。服务器环境需配合 **Xvfb** 虚拟显示。
 
-- 所有敏感字段（密码、2FA 密钥、Cookies）均以 **AES-256-GCM** 密文存储
-- 家庭组限制：最多 5 名成员（管理员 + 4 名额），成员 12 个月内只能切换一次
-- 敏感操作（退出/删除/移除）需要 **rapt token**（密码重验证），token 获取后跨操作共享，几分钟内有效
+- 家庭组限制：最多 6 名成员（管理员 + 5 名额），成员 12 个月内只能切换一次
+- 敏感操作（退出/删除/移除）需要 **rapt token**（密码重验证），token 跨操作共享，几分钟内有效
 - 建议定期备份 PostgreSQL 数据
+
+## Documentation
+
+- [架构说明](docs/ARCHITECTURE.md)
+- [维护与扩展指南](docs/MAINTENANCE_GUIDE.md)
+- [家庭组 API 记录](docs/FAMILY_GROUP_API.md)
+
+## License
+
+[MIT](LICENSE)
