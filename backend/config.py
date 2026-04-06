@@ -1,17 +1,26 @@
 """应用配置模块 - 集中管理所有配置项"""
 import os
+from pathlib import Path
 
-DEFAULT_SECRET_KEY = "accops-local-dev-secret-key"
+# 加载 .env 文件（如果存在）
+_env_path = Path(__file__).parent / ".env"
+if _env_path.exists():
+    with open(_env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip())
 
 # JWT 配置
-SECRET_KEY = os.environ.get("GAM_SECRET_KEY", DEFAULT_SECRET_KEY)
+SECRET_KEY = os.environ.get("GAM_SECRET_KEY", "accops-change-me-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("GAM_TOKEN_EXPIRE_MINUTES", "480"))  # 默认 8 小时
 
 # 数据库配置
 DATABASE_URL = os.environ.get(
     "GAM_DATABASE_URL",
-    "postgresql://root:123456@127.0.0.1:5432/gam",
+    "postgresql://postgres:postgres@127.0.0.1:5432/gam",
 )
 
 # CORS 配置

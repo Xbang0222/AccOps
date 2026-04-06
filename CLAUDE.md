@@ -97,8 +97,8 @@ frontend/src/
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `GAM_DATABASE_URL` | `postgresql://root:123456@127.0.0.1:5432/gam` | 数据库连接串 |
-| `GAM_SECRET_KEY` | 随机生成 | JWT 签名密钥 |
+| `GAM_DATABASE_URL` | 见 `.env.example` | 数据库连接串 |
+| `GAM_SECRET_KEY` | 见 `.env.example` | JWT 签名密钥 |
 | `GAM_TOKEN_EXPIRE_MINUTES` | `480` | Token 有效期（分钟） |
 | `GAM_CORS_ORIGINS` | `http://localhost:5173` | CORS 允许的源，逗号分隔 |
 | `GAM_HOST` | `127.0.0.1` | 服务监听地址 |

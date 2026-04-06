@@ -69,9 +69,13 @@ BROWSER_PORT_MAX = 59600
 # OAuth (services/oauth.py)
 # ============================================================
 
-# -- OAuth client credentials (Google Cloud Code / Antigravity 内置客户端) --
-OAUTH_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-OAUTH_CLIENT_SECRET = "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"
+# -- OAuth client credentials (从环境变量读取) --
+import os as _os
+OAUTH_CLIENT_ID = _os.environ.get(
+    "GAM_OAUTH_CLIENT_ID",
+    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
+)
+OAUTH_CLIENT_SECRET = _os.environ.get("GAM_OAUTH_CLIENT_SECRET", "")
 
 OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/cloud-platform",

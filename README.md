@@ -105,18 +105,12 @@ AccOps 是一个自托管的 Google 账号批量管理系统，将**浏览器自
 cd backend
 uv sync
 
-# 可选：配置环境变量（均有默认值）
-export GAM_DATABASE_URL="postgresql://user:pass@127.0.0.1:5432/gam"
-export GAM_SECRET_KEY="your-secret-key"
-
-# 启动前杀残留进程（--reload 模式必须）
-lsof -ti:8000 | xargs kill -9 2>/dev/null
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入你的配置（数据库密码、OAuth 密钥等）
 
 # 启动
 uv run python run.py
-
-# 开发模式（热重载）
-uv run python run.py --reload
 ```
 
 API 文档：http://localhost:8000/docs
@@ -163,15 +157,23 @@ pnpm build
 
 ## Configuration
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `GAM_DATABASE_URL` | `postgresql://root:123456@127.0.0.1:5432/gam` | PostgreSQL 连接串 |
-| `GAM_SECRET_KEY` | 随机生成 | JWT 签名密钥 |
-| `GAM_TOKEN_EXPIRE_MINUTES` | `480` | Token 有效期（分钟） |
-| `GAM_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | CORS 允许源，逗号分隔 |
-| `GAM_HOST` | `127.0.0.1` | 监听地址 |
-| `GAM_PORT` | `8000` | 监听端口 |
-| `VITE_DEV_PROXY_TARGET` | `http://127.0.0.1:8000` | 前端开发代理目标，仅 Vite 开发模式使用 |
+所有配置通过环境变量或 `backend/.env` 文件管理。首次使用请复制模板：
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `GAM_DATABASE_URL` | ✅ | PostgreSQL 连接串 |
+| `GAM_SECRET_KEY` | ✅ | JWT 签名密钥（随机字符串） |
+| `GAM_OAUTH_CLIENT_ID` | ✅ | Google OAuth Client ID |
+| `GAM_OAUTH_CLIENT_SECRET` | ✅ | Google OAuth Client Secret |
+| `GAM_TOKEN_EXPIRE_MINUTES` | | Token 有效期，默认 480 分钟 |
+| `GAM_CORS_ORIGINS` | | CORS 允许源，默认 `http://localhost:5173` |
+| `GAM_HOST` | | 监听地址，默认 `127.0.0.1` |
+| `GAM_PORT` | | 监听端口，默认 `8000` |
+| `VITE_DEV_PROXY_TARGET` | | 前端代理目标，默认 `http://127.0.0.1:8000` |
 
 ### Development Connectivity
 
