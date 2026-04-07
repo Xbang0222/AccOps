@@ -2,6 +2,7 @@
 import json
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 from models.orm import Account
@@ -21,7 +22,7 @@ class AccountService:
         is_family_owner = False
         family_member_count = 0
         if account.family_group_id:
-            group = self.db.query(Group).get(account.family_group_id)
+            group = self.db.get(Group, account.family_group_id)
             if group:
                 family_member_count = group.member_count or 0
                 if group.main_account_id == account.id:
@@ -48,6 +49,9 @@ class AccountService:
             "validation_url": self._get_validation_url(account.oauth_credential_json),
             "notes": account.notes or "",
             "retired_at": account.retired_at.isoformat() if account.retired_at else None,
+            "pool_use_count": account.pool_use_count or 0,
+            "pool_status": account.pool_status or "",
+            "pool_last_used_at": account.pool_last_used_at.isoformat() if account.pool_last_used_at else None,
             "created_at": account.created_at.isoformat() if account.created_at else None,
             "updated_at": account.updated_at.isoformat() if account.updated_at else None,
         }
@@ -104,33 +108,41 @@ class AccountService:
         return [self._to_dict(row) for row in rows], total
 
     def get_available(self, search: str = "", limit: int = 200, pool_group_id: int = None) -> List[Dict]:
-        """获取可邀请的账号：未在家庭组 + (从未用过 或 今天用过的还能再用)
+        """获取可邀请的账号：未在家庭组 + 未废弃/不可用 + 使用次数未满 + 当日有效
 
         如果指定 pool_group_id，只返回该号池的账号。
         """
-        from datetime import date
-        today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+        from core.constants import POOL_MAX_USE_COUNT
+        beijing_tz = ZoneInfo("Asia/Shanghai")
+        today_beijing = datetime.now(beijing_tz).date()
+        today_start = datetime.combine(today_beijing, datetime.min.time()).replace(tzinfo=beijing_tz)
 
-        query = self.db.query(Account.id, Account.email).filter(
+        # 公共过滤: 未在家庭组 + 状态正常 + 使用次数未满 + 使用日期是今天（或从未使用）
+        base_filters = [
             Account.family_group_id.is_(None),
-            Account.pool_group_id.is_(None),
-            # retired_at 为空（从未用过）或 retired_at >= 今天开始（今天用过还能再用）
-            (Account.retired_at.is_(None)) | (Account.retired_at >= today_start),
-        )
+            (Account.pool_status.is_(None)) | (Account.pool_status == ""),
+            (Account.pool_use_count.is_(None)) | (Account.pool_use_count < POOL_MAX_USE_COUNT),
+            (Account.pool_last_used_at.is_(None)) | (Account.pool_last_used_at >= today_start),
+        ]
+
         if pool_group_id is not None:
-            # 查号池内的可用号时，放开 pool_group_id 限制
             query = self.db.query(Account.id, Account.email).filter(
-                Account.family_group_id.is_(None),
                 Account.pool_group_id == pool_group_id,
-                (Account.retired_at.is_(None)) | (Account.retired_at >= today_start),
+                *base_filters,
+            )
+        else:
+            query = self.db.query(Account.id, Account.email).filter(
+                Account.pool_group_id.is_(None),
+                *base_filters,
             )
         if search:
             query = query.filter(Account.email.ilike(f"%{search}%"))
-        query = query.order_by(Account.email).limit(limit)
+        # 优先选未用过的号
+        query = query.order_by(Account.pool_use_count.asc(), Account.email).limit(limit)
         return [{"id": row.id, "email": row.email} for row in query.all()]
 
     def get_by_id(self, account_id: int) -> Optional[Dict]:
-        row = self.db.query(Account).get(account_id)
+        row = self.db.get(Account, account_id)
         return self._to_dict(row) if row else None
 
     def find_by_email(self, email: str) -> Optional[Dict]:
@@ -176,7 +188,7 @@ class AccountService:
         family_group_id: int = None,
         notes: str = "",
     ):
-        account = self.db.query(Account).get(account_id)
+        account = self.db.get(Account, account_id)
         if not account:
             return
 
@@ -195,7 +207,7 @@ class AccountService:
         self.db.commit()
 
     def delete(self, account_id: int):
-        account = self.db.query(Account).get(account_id)
+        account = self.db.get(Account, account_id)
         if account:
             self.db.delete(account)
             self.db.commit()

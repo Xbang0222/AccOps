@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react'
 import { App, Button, Empty, Flex, Modal, Select, Spin, Tag, Tooltip, Typography } from 'antd'
-import { ArrowLeftOutlined, DatabaseOutlined, EyeInvisibleOutlined, EyeOutlined, TeamOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, DatabaseOutlined, EyeInvisibleOutlined, EyeOutlined, StopOutlined, TeamOutlined, UndoOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { getAvailableAccounts, getPoolAccounts, addToPool, removeFromPool } from '@/api'
+import { getAvailableAccounts, getPoolAccounts, addToPool, removeFromPool, markPoolUnusable, clearPoolStatus } from '@/api'
 import { GroupAccountCard } from '@/features/group-detail/components/GroupAccountCard'
 import { GroupOperationLogPanel } from '@/features/group-detail/components/GroupOperationLogPanel'
 import { GroupOperationModal } from '@/features/group-detail/components/GroupOperationModal'
@@ -59,6 +59,22 @@ const GroupDetailPage: React.FC = () => {
       void loadPool()
     } catch { msg.error('移除失败') }
   }, [groupId, loadPool, msg])
+
+  const handleMarkUnusable = useCallback(async (accountId: number) => {
+    try {
+      await markPoolUnusable(accountId)
+      msg.success('已标记为无法使用')
+      void loadPool()
+    } catch { msg.error('标记失败') }
+  }, [loadPool, msg])
+
+  const handleClearPoolStatus = useCallback(async (accountId: number) => {
+    try {
+      await clearPoolStatus(accountId)
+      msg.success('已恢复正常状态')
+      void loadPool()
+    } catch { msg.error('操作失败') }
+  }, [loadPool, msg])
 
   const handleOpenAddPool = useCallback(async () => {
     setAddPoolVisible(true)
@@ -195,26 +211,56 @@ const GroupDetailPage: React.FC = () => {
           <Button key="add" type="primary" onClick={handleOpenAddPool}>添加账号到号池</Button>,
           <Button key="close" onClick={() => setPoolVisible(false)}>关闭</Button>,
         ]}
-        width={500}
+        width={560}
       >
         <Spin spinning={poolLoading}>
           {poolAccounts.length > 0 ? (
             <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-              {poolAccounts.map((a) => (
-                <Flex key={a.id} justify="space-between" align="center" style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
-                  <Text style={{ fontSize: 13 }}>{a.email}</Text>
-                  <Flex gap={4} align="center">
-                    {a.retired_at ? (
-                      <Tag color={new Date(a.retired_at).toDateString() === new Date().toDateString() ? 'blue' : 'default'} style={{ margin: 0, fontSize: 11 }}>
-                        {new Date(a.retired_at).toDateString() === new Date().toDateString() ? '今日可复用' : '已用完'}
-                      </Tag>
-                    ) : (
-                      <Tag color="green" style={{ margin: 0, fontSize: 11 }}>可用</Tag>
-                    )}
-                    <Button size="small" type="text" danger onClick={() => handleRemoveFromPool([a.id])}>移除</Button>
+              {poolAccounts.map((a) => {
+                const useCount = a.pool_use_count ?? 0
+                const poolStatus = a.pool_status || ''
+                const isRetired = poolStatus === 'retired'
+                const isUnusable = poolStatus === 'unusable'
+                const lastUsed = a.pool_last_used_at
+                const isUsedToday = lastUsed
+                  && new Date(lastUsed).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+                    === new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+
+                let statusTag: React.ReactNode
+                if (isUnusable) {
+                  statusTag = <Tag color="red" style={{ margin: 0, fontSize: 11 }}>无法使用</Tag>
+                } else if (isRetired) {
+                  statusTag = <Tag color="default" style={{ margin: 0, fontSize: 11 }}>废弃号</Tag>
+                } else if (useCount >= 2) {
+                  statusTag = <Tag color="default" style={{ margin: 0, fontSize: 11 }}>废弃号 (2/2)</Tag>
+                } else if (isUsedToday && useCount > 0) {
+                  statusTag = <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>今日可复用 ({useCount}/2)</Tag>
+                } else if (useCount > 0) {
+                  statusTag = <Tag color="default" style={{ margin: 0, fontSize: 11 }}>废弃号</Tag>
+                } else {
+                  statusTag = <Tag color="green" style={{ margin: 0, fontSize: 11 }}>可用</Tag>
+                }
+
+                return (
+                  <Flex key={a.id} justify="space-between" align="center" style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+                    <Text style={{ fontSize: 13 }}>{a.email}</Text>
+                    <Flex gap={4} align="center">
+                      {statusTag}
+                      {!isUnusable && !isRetired && useCount < 2 ? (
+                        <Tooltip title="标记为无法使用">
+                          <Button size="small" type="text" icon={<StopOutlined style={{ color: '#ff4d4f' }} />} onClick={() => handleMarkUnusable(a.id)} />
+                        </Tooltip>
+                      ) : null}
+                      {(isUnusable || isRetired) ? (
+                        <Tooltip title="恢复正常">
+                          <Button size="small" type="text" icon={<UndoOutlined style={{ color: '#52c41a' }} />} onClick={() => handleClearPoolStatus(a.id)} />
+                        </Tooltip>
+                      ) : null}
+                      <Button size="small" type="text" danger onClick={() => handleRemoveFromPool([a.id])}>移除</Button>
+                    </Flex>
                   </Flex>
-                </Flex>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <Empty description="号池为空，请添加备用账号" style={{ margin: '20px 0' }} />

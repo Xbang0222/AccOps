@@ -37,6 +37,8 @@ interface UseAutomationWsOptions {
   onFail?: (opKey: string, message: string, accountId?: number) => void;
   /** 连接错误时的回调 (opKey, message, accountId) */
   onError?: (opKey: string, message: string, accountId?: number) => void;
+  /** 每个步骤消息的回调 (accountId, step) — 所有并发操作都会触发 */
+  onStep?: (accountId: number, step: StepMsg) => void;
 }
 
 interface WsConnection {
@@ -52,7 +54,7 @@ interface WsConnection {
  * 组件卸载时自动关闭所有连接。
  */
 export function useAutomationWs(options: UseAutomationWsOptions = {}): AutomationWsResult {
-  const { onSuccess, onFail, onError } = options;
+  const { onSuccess, onFail, onError, onStep } = options;
 
   // 最后一个操作的状态（用于 UI 展示当前选中账号的日志）
   const [runningOp, setRunningOp] = useState<string | null>(null);
@@ -108,6 +110,8 @@ export function useAutomationWs(options: UseAutomationWsOptions = {}): Automatio
           const isActive = lastAccountIdRef.current === accountId;
 
           if (data.type === 'step') {
+            // 对所有并发操作都触发 onStep 回调
+            onStep?.(accountId, data);
             if (isActive) {
               setSteps((prev) => {
                 if (data.status === 'running') {

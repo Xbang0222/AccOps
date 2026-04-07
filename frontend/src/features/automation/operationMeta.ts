@@ -6,7 +6,7 @@ export interface AutomationOperationField {
 }
 
 export interface AutomationOperationDefinition {
-  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'replace' | 'family-rotate' | 'pool-batch-login'
+  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'replace' | 'family-rotate' | 'pool-batch-login' | 'pool-replace-all'
   label: string
   color: string
   needBrowser: boolean
@@ -88,6 +88,14 @@ export const FAMILY_AUTOMATION_OPERATIONS: AutomationOperationDefinition[] = [
       { name: 'remove_emails', placeholder: '要移除的子号（逗号分隔）' },
       { name: 'new_count', placeholder: '新子号数量' },
     ],
+    role: 'owner',
+  },
+  {
+    key: 'pool-replace-all',
+    label: '一键换号',
+    color: '#f5222d',
+    needBrowser: false,
+    danger: true,
     role: 'owner',
   },
 ]

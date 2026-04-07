@@ -1,6 +1,7 @@
 import {
   CheckCircleOutlined,
   LogoutOutlined,
+  ReloadOutlined,
   SwapOutlined,
   SyncOutlined,
   TeamOutlined,
@@ -19,6 +20,9 @@ const OPERATION_ICON_MAP: Record<AutomationOperationDefinition['key'], ReactNode
   'family-remove': <UserDeleteOutlined />,
   'family-leave': <LogoutOutlined />,
   replace: <SwapOutlined />,
+  'family-rotate': <ReloadOutlined />,
+  'pool-batch-login': <SyncOutlined />,
+  'pool-replace-all': <SwapOutlined />,
 }
 
 export function getAutomationOperationIcon(key: AutomationOperationDefinition['key']): ReactNode {

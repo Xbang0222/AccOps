@@ -99,6 +99,24 @@ export function useGroupDetailController(groupId: number) {
   }, [])
 
   const automation = useAutomationWs({
+    onStep: (accountId, step) => {
+      setOpStates((previous) => {
+        const current = previous[accountId]
+        if (!current) return previous
+        const updatedSteps = [...(current.steps ?? [])]
+        if (step.status === 'running') {
+          updatedSteps.push(step)
+        } else {
+          let idx = -1
+          for (let j = updatedSteps.length - 1; j >= 0; j--) {
+            if (updatedSteps[j].step === step.step) { idx = j; break }
+          }
+          if (idx >= 0) updatedSteps[idx] = step
+          else updatedSteps.push(step)
+        }
+        return { ...previous, [accountId]: { ...current, steps: updatedSteps } }
+      })
+    },
     onSuccess: (_opKey, message, accountId) => {
       const id = accountId ?? wsAccountIdRef.current
       if (id !== null) {
@@ -135,15 +153,6 @@ export function useGroupDetailController(groupId: number) {
     },
   })
   const { execute } = automation
-
-  useEffect(() => {
-    const accountId = wsAccountIdRef.current
-    if (accountId === null || automation.runningOp === null) {
-      return
-    }
-
-    setAccountOpPatch(accountId, { steps: automation.steps })
-  }, [automation.runningOp, automation.steps, setAccountOpPatch])
 
   const executeViaWs = useCallback(
     (accountId: number, action: string, extra: Record<string, string> = {}, opKey?: string) => {
@@ -308,6 +317,19 @@ export function useGroupDetailController(groupId: number) {
 
     if (operation.needBrowser && !browserRunning.has(accountId)) {
       msg.warning('请先启动浏览器')
+      return
+    }
+
+    // 一键换号需要二次确认
+    if (operation.key === 'pool-replace-all') {
+      Modal.confirm({
+        title: '一键换号',
+        content: '将移除当前家庭组所有子号，并从号池自动选取新子号替换。确认执行？',
+        okText: '确认执行',
+        okButtonProps: { danger: true },
+        cancelText: '取消',
+        onOk: () => executeViaWs(accountId, 'pool-replace-all', {}, 'pool-replace-all'),
+      })
       return
     }
 

@@ -32,6 +32,8 @@ import {
   createBrowserProfile,
   launchBrowser,
   stopBrowser,
+  markPoolUnusable,
+  clearPoolStatus,
 } from '@/api';
 import { createAccountTableColumns } from '@/features/accountsTableColumns';
 import { createDefaultBrowserProfile } from '@/features/browser/browserProfileDefaults';
@@ -240,6 +242,22 @@ const AccountsPage: React.FC = () => {
     } finally { setImportLoading(false); }
   };
 
+  const handleMarkUnusable = async (id: number) => {
+    try {
+      await markPoolUnusable(id);
+      msg.success('已标记为无法使用');
+      loadAccounts();
+    } catch { msg.error('标记失败'); }
+  };
+
+  const handleClearPoolStatus = async (id: number) => {
+    try {
+      await clearPoolStatus(id);
+      msg.success('已恢复正常状态');
+      loadAccounts();
+    } catch { msg.error('操作失败'); }
+  };
+
   const baseColumns = createAccountTableColumns({
     browserLoading,
     browserRunning,
@@ -250,6 +268,8 @@ const AccountsPage: React.FC = () => {
     onDelete: handleDelete,
     onEdit: handleEdit,
     onLaunchAndLogin: handleLaunchAndLogin,
+    onMarkUnusable: handleMarkUnusable,
+    onClearPoolStatus: handleClearPoolStatus,
     onStopBrowser: handleStopBrowser,
   });
 

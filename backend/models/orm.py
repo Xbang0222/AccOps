@@ -68,6 +68,9 @@ class Account(Base):
     cookies_json = Column(Text, default="")  # 登录后保存的 cookies (JSON), 用于纯 HTTP 操作
     oauth_credential_json = Column(Text, default="")  # OAuth 认证 JSON (antigravity 格式)
     retired_at = Column(DateTime, nullable=True)  # 从家庭组退出/移除的时间 (当日可复用，次日起冷却)
+    pool_use_count = Column(Integer, default=0)  # 全局使用次数 (接受邀请成功算一次, 上限2)
+    pool_status = Column(String, default="")  # 号池状态: "" | "retired" | "unusable"
+    pool_last_used_at = Column(DateTime, nullable=True)  # 上次接受邀请的时间 (用于隔天判断)
     notes = Column(Text, default="")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

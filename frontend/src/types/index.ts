@@ -22,6 +22,9 @@ export interface Account {
   validation_url?: string;
   notes?: string;
   retired_at?: string;
+  pool_use_count?: number;
+  pool_status?: string;  // "" | "retired" | "unusable"
+  pool_last_used_at?: string;
   created_at?: string;
   updated_at?: string;
 }

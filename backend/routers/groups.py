@@ -140,3 +140,28 @@ async def remove_from_pool(
     """将账号批量从号池移除"""
     count = svc.remove_from_pool(group_id, data.account_ids)
     return {"message": f"已从号池移除 {count} 个账号"}
+
+
+# ── 号池状态标记 ──
+
+
+@router.post("/pool/mark-unusable/{account_id}")
+async def mark_pool_unusable(
+    account_id: int,
+    svc: GroupService = Depends(get_group_service),
+):
+    """标记号池账号为「无法使用」（地区限制等原因）"""
+    if not svc.mark_pool_unusable(account_id):
+        raise HTTPException(status_code=404, detail="账号不存在")
+    return {"message": "已标记为无法使用"}
+
+
+@router.post("/pool/clear-status/{account_id}")
+async def clear_pool_status(
+    account_id: int,
+    svc: GroupService = Depends(get_group_service),
+):
+    """清除号池状态标记，恢复正常"""
+    if not svc.clear_pool_status(account_id):
+        raise HTTPException(status_code=404, detail="账号不存在")
+    return {"message": "已恢复正常状态"}

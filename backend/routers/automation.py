@@ -42,6 +42,7 @@ from core.constants import (
     ACTION_FAMILY_REPLACE,
     ACTION_FAMILY_ROTATE,
     ACTION_POOL_BATCH_LOGIN,
+    ACTION_POOL_REPLACE_ALL,
     ACTION_OAUTH,
     ACTION_PHONE_VERIFY,
     PHASE_REMOVE_OLD,
@@ -567,24 +568,92 @@ async def _handle_family_rotate(
         remove_success = 0
         remove_fail = []
 
-        for i, email in enumerate(remove_emails):
-            if cancel_token.is_cancelled:
-                break
-            step = _create_step_handler(msg_queue, i * 50)
-            step({"type": "step", "name": f"移除 {email}", "status": "running", "message": f"({i+1}/{len(remove_emails)})"})
+        # 先获取一次 rapt token (跨操作共享, 只需验证一次)
+        await ws.send_json({"type": "step", "name": "密码重验证", "status": "running", "message": "获取 rapt token..."})
 
-            task = asyncio.ensure_future(
-                run_remove_family_member(profile_id, email, password, totp_secret, on_step=step, cancel_token=cancel_token)
-            )
-            if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
-                return False
+        rapt = None
+        main_cookies = None
+        email_to_uid: dict[str, str] = {}
+        try:
+            page = browser_manager.get_page(profile_id)
+            if page:
+                # 先用 cookies 查成员列表, 获取真实 user_id
+                main_cookies = browser_manager.get_cookies(profile_id)
+                if main_cookies:
+                    with FamilyAPI(main_cookies) as api:
+                        members_info = api.query_members()
+                        for m in members_info.get("members", []):
+                            m_email = m.get("email", "").lower()
+                            if m_email:
+                                email_to_uid[m_email] = m.get("user_id", "")
 
-            result, error = _get_task_result(task)
-            if result and result.success:
-                remove_success += 1
-                sync_group_after_action(ACTION_FAMILY_REMOVE, account_id, True, result.message, {"member_email": email})
-            else:
-                remove_fail.append(email)
+                # 用第一个真实 user_id 触发密码重验证
+                first_uid = next((email_to_uid.get(e.lower(), "") for e in remove_emails if email_to_uid.get(e.lower())), "")
+                rapt_path = f"/family/remove/g/{first_uid}" if first_uid else "/family/delete"
+
+                from services.browser import get_rapt_sync
+                rapt = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: get_rapt_sync(page, rapt_path, password, totp_secret),
+                )
+                # 重验证后 cookies 可能已更新
+                main_cookies = browser_manager.get_cookies(profile_id)
+        except Exception as exc:
+            logger.warning(f"rapt 获取异常: {exc}")
+
+        if not rapt:
+            # rapt 失败, fallback 到逐个移除 (可能是 pending 成员不需要 rapt)
+            await ws.send_json({"type": "step", "name": "密码重验证", "status": "fail", "message": "rapt 获取失败, 尝试逐个移除"})
+            for i, email in enumerate(remove_emails):
+                if cancel_token.is_cancelled:
+                    break
+                step = _create_step_handler(msg_queue, i * 50)
+                step({"type": "step", "name": f"移除 {email}", "status": "running", "message": f"({i+1}/{len(remove_emails)})"})
+
+                task = asyncio.ensure_future(
+                    run_remove_family_member(profile_id, email, password, totp_secret, on_step=step, cancel_token=cancel_token)
+                )
+                if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+                    return False
+
+                result, error = _get_task_result(task)
+                if result and result.success:
+                    remove_success += 1
+                    sync_group_after_action(ACTION_FAMILY_REMOVE, account_id, True, result.message, {"member_email": email})
+                else:
+                    remove_fail.append(email)
+        else:
+            # rapt 成功, 用纯 RPC 批量移除
+            await ws.send_json({"type": "step", "name": "密码重验证", "status": "ok", "message": "rapt 获取成功"})
+
+            # 复用之前查到的 email_to_uid (已在 rapt 获取阶段查过)
+            try:
+                with FamilyAPI(main_cookies) as api:
+                    for i, email in enumerate(remove_emails):
+                        if cancel_token.is_cancelled:
+                            break
+                        await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "running", "message": f"({i+1}/{len(remove_emails)})"})
+
+                        uid = email_to_uid.get(email.lower(), "")
+                        if not uid:
+                            remove_fail.append(f"{email}: 未找到成员")
+                            await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "fail", "message": "未找到成员"})
+                            continue
+
+                        try:
+                            ok = api.remove_member(uid, rapt)
+                            if ok:
+                                remove_success += 1
+                                sync_group_after_action(ACTION_FAMILY_REMOVE, account_id, True, f"已移除: {email}", {"member_email": email})
+                                await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "ok", "message": "已移除"})
+                            else:
+                                remove_fail.append(email)
+                                await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "fail", "message": "RPC 调用失败"})
+                        except Exception as exc:
+                            remove_fail.append(f"{email}: {exc}")
+                            await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "fail", "message": str(exc)[:80]})
+            except Exception as exc:
+                await ws.send_json({"type": "step", "name": "批量移除", "status": "fail", "message": f"异常: {str(exc)[:80]}"})
 
         await ws.send_json({"type": "step", "name": "阶段1完成", "status": "ok", "message": f"移除 {remove_success}/{len(remove_emails)}"})
 
@@ -654,6 +723,112 @@ async def _handle_family_rotate(
     if not invite_success:
         await ws.send_json({"type": "result", "success": False, "message": f"邀请全部失败: {'; '.join(invite_fail)}", "duration_ms": 0})
         return True
+
+    # ── 阶段3.5: 批量登录子号 (确保 cookies 有效) ──
+    await ws.send_json({"type": "step", "name": "--- 阶段3.5: 登录子号 ---", "status": "info", "message": f"为 {len(invite_success)} 个子号刷新 cookies"})
+
+    login_success = 0
+    login_fail = []
+    for i, email in enumerate(invite_success):
+        if cancel_token.is_cancelled:
+            break
+
+        # 检查现有 cookies 是否有效
+        with get_db_session() as db:
+            sub = db.query(Account).filter(Account.email.ilike(email)).first()
+            if not sub:
+                login_fail.append(f"{email}: 账号不存在")
+                continue
+            sub_id = sub.id
+            sub_password = _decrypt(sub.password)
+            sub_totp = _decrypt(sub.totp_secret) or ""
+            sub_recovery = _decrypt(sub.recovery_email) or ""
+            cookies_json = sub.cookies_json or ""
+
+        # 尝试用现有 cookies 验证
+        if cookies_json:
+            try:
+                import json as json_mod
+                test_cookies = json_mod.loads(cookies_json)
+                with FamilyAPI(test_cookies) as api:
+                    pass  # __init__ 里 refresh_tokens 成功 = cookies 有效
+                login_success += 1
+                await ws.send_json({"type": "step", "name": f"验证 {email}", "status": "ok", "message": "cookies 有效"})
+                continue
+            except Exception:
+                pass  # cookies 无效, 需要重新登录
+
+        # cookies 无效, 启动浏览器登录
+        await ws.send_json({"type": "step", "name": f"登录 {email}", "status": "running", "message": f"({i+1}/{len(invite_success)})"})
+
+        sub_profile_id = None
+        with get_db_session() as db:
+            bp = db.query(BrowserProfile).filter(BrowserProfile.account_id == sub_id).first()
+            if bp:
+                sub_profile_id = bp.id
+
+        if not sub_profile_id:
+            try:
+                with get_db_session() as db:
+                    bp = BrowserProfile(name=email, account_id=sub_id)
+                    db.add(bp)
+                    db.commit()
+                    db.refresh(bp)
+                    sub_profile_id = bp.id
+            except Exception as exc:
+                login_fail.append(f"{email}: 创建配置失败 {exc}")
+                continue
+
+        # 启动浏览器
+        try:
+            if not browser_manager.is_running(sub_profile_id):
+                with get_db_session() as db:
+                    from sqlalchemy.orm import joinedload
+                    fresh_bp = (
+                        db.query(BrowserProfile)
+                        .options(joinedload(BrowserProfile.account))
+                        .filter(BrowserProfile.id == sub_profile_id)
+                        .first()
+                    )
+                    _ = fresh_bp.account
+                    await browser_manager.launch(fresh_bp)
+        except Exception as exc:
+            login_fail.append(f"{email}: 启动浏览器失败 {exc}")
+            continue
+
+        # 登录
+        try:
+            from services.verification import extract_verification_link
+            with get_db_session() as db:
+                sub_acct = db.query(Account).filter(Account.id == sub_id).first()
+                sub_notes = sub_acct.notes if sub_acct else ""
+            verification_url = extract_verification_link(sub_notes) or ""
+
+            result = await run_auto_login(
+                sub_profile_id, email, sub_password, sub_totp,
+                sub_recovery, verification_url,
+                on_step=_create_step_handler(msg_queue, 2000 + i * 100),
+                cancel_token=cancel_token,
+            )
+            # 转发步骤消息
+            await _flush_step_messages(ws, msg_queue)
+
+            if result and result.success:
+                login_success += 1
+                _save_cookies(sub_id, sub_profile_id)
+                await ws.send_json({"type": "step", "name": f"登录 {email}", "status": "ok", "message": "已保存 cookies"})
+            else:
+                login_fail.append(f"{email}: {result.message if result else '登录失败'}")
+                await ws.send_json({"type": "step", "name": f"登录 {email}", "status": "fail", "message": result.message if result else "登录失败"})
+        except Exception as exc:
+            login_fail.append(f"{email}: {exc}")
+        finally:
+            try:
+                await browser_manager.stop(sub_profile_id)
+            except Exception:
+                pass
+
+    await ws.send_json({"type": "step", "name": "阶段3.5完成", "status": "ok", "message": f"登录成功 {login_success}/{len(invite_success)}"})
 
     # ── 阶段4: 用子号 cookies 自动接受邀请 ──
     await ws.send_json({"type": "step", "name": "--- 阶段4: 自动接受邀请 ---", "status": "info", "message": f"共 {len(invite_success)} 个"})
@@ -761,6 +936,95 @@ async def _handle_family_rotate(
     return True
 
 
+async def _handle_pool_replace_all(
+    ws: WebSocket,
+    msg_queue: queue.Queue,
+    cancel_token: CancellationToken,
+    profile_id: int,
+    account_id: int,
+    password: str,
+    totp_secret: str,
+) -> bool:
+    """一键换号：自动查出所有子号 → 全部移除 → 从号池选同等数量新号 → 邀请 → 接受。"""
+
+    # 如果浏览器未运行, 自动启动
+    auto_launched_browser = False
+    if not profile_id or not browser_manager.is_running(profile_id):
+        await ws.send_json({"type": "step", "name": "启动浏览器", "status": "running", "message": "自动启动主号浏览器..."})
+        try:
+            with get_db_session() as db:
+                from sqlalchemy.orm import joinedload
+                bp = (
+                    db.query(BrowserProfile)
+                    .options(joinedload(BrowserProfile.account))
+                    .filter(BrowserProfile.account_id == account_id)
+                    .first()
+                )
+                if not bp:
+                    # 自动创建浏览器配置
+                    acct = db.query(Account).filter(Account.id == account_id).first()
+                    bp = BrowserProfile(name=acct.email if acct else str(account_id), account_id=account_id)
+                    db.add(bp)
+                    db.commit()
+                    db.refresh(bp)
+                    bp = (
+                        db.query(BrowserProfile)
+                        .options(joinedload(BrowserProfile.account))
+                        .filter(BrowserProfile.id == bp.id)
+                        .first()
+                    )
+                profile_id = bp.id
+                _ = bp.account
+                await browser_manager.launch(bp)
+                auto_launched_browser = True
+            await ws.send_json({"type": "step", "name": "启动浏览器", "status": "ok", "message": "浏览器已启动"})
+        except Exception as exc:
+            await ws.send_json({"type": "result", "success": False, "message": f"启动浏览器失败: {exc}", "duration_ms": 0})
+            return True
+
+    # 查出当前家庭组所有子号
+    with get_db_session() as db:
+        main_account = db.query(Account).filter(Account.id == account_id).first()
+        if not main_account or not main_account.family_group_id:
+            await ws.send_json({"type": "result", "success": False, "message": "该账号没有关联的家庭组", "duration_ms": 0})
+            return True
+
+        group_id = main_account.family_group_id
+        main_email = main_account.email.lower()
+
+        # 查同组所有子号（排除主号自己）
+        sub_accounts = (
+            db.query(Account)
+            .filter(Account.family_group_id == group_id, Account.id != account_id)
+            .all()
+        )
+        remove_emails = [a.email for a in sub_accounts]
+
+    if not remove_emails:
+        await ws.send_json({"type": "result", "success": False, "message": "当前家庭组没有子号可替换", "duration_ms": 0})
+        return True
+
+    new_count = len(remove_emails)
+    await ws.send_json({
+        "type": "step", "name": "一键换号",
+        "status": "info",
+        "message": f"将移除 {new_count} 个子号并替换: {', '.join(remove_emails)}",
+    })
+
+    # 复用已有的轮换逻辑
+    return await _handle_family_rotate(
+        ws=ws,
+        msg_queue=msg_queue,
+        cancel_token=cancel_token,
+        profile_id=profile_id,
+        account_id=account_id,
+        password=password,
+        totp_secret=totp_secret,
+        remove_emails=remove_emails,
+        new_count=new_count,
+    )
+
+
 async def _handle_pool_batch_login(
     ws: WebSocket,
     msg_queue: queue.Queue,
@@ -796,18 +1060,20 @@ async def _handle_pool_batch_login(
         return True
 
     total = len(accounts_to_login)
-    await ws.send_json({"type": "step", "name": "批量登录", "status": "info", "message": f"共 {total} 个账号需要登录"})
+    await ws.send_json({"type": "step", "name": "批量登录", "status": "info", "message": f"共 {total} 个账号需要并发登录"})
 
     success_count = 0
-    fail_list = []
+    fail_list: list[str] = []
 
-    for i, acct in enumerate(accounts_to_login):
-        if cancel_token.is_cancelled:
-            break
-
+    # --- 单个账号的完整登录流程 (启动浏览器 → 登录 → 保存 cookies → 关闭) ---
+    async def _login_one(i: int, acct: dict) -> bool:
+        """返回 True 表示成功"""
         email = acct["email"]
         step = _create_step_handler(msg_queue, i * 100)
         step({"type": "step", "name": f"登录 {email}", "status": "running", "message": f"({i+1}/{total})"})
+
+        if cancel_token.is_cancelled:
+            return False
 
         # 获取或创建浏览器配置
         profile_id = None
@@ -818,8 +1084,6 @@ async def _handle_pool_batch_login(
 
         if not profile_id:
             try:
-                from features.browser.browserProfileDefaults import create_default_browser_profile
-                profile_data = {"name": email, "account_id": acct["id"]}
                 with get_db_session() as db:
                     bp = BrowserProfile(name=email, account_id=acct["id"])
                     db.add(bp)
@@ -828,7 +1092,7 @@ async def _handle_pool_batch_login(
                     profile_id = bp.id
             except Exception as exc:
                 fail_list.append(f"{email}: 创建浏览器配置失败 {exc}")
-                continue
+                return False
 
         # 启动浏览器
         try:
@@ -842,38 +1106,67 @@ async def _handle_pool_batch_login(
                         .first()
                     )
                     _ = fresh_profile.account
-                await browser_manager.launch(fresh_profile)
+                    await browser_manager.launch(fresh_profile)
         except Exception as exc:
             fail_list.append(f"{email}: 启动浏览器失败 {exc}")
-            continue
+            return False
 
         # 登录
-        from services.verification import extract_verification_link
-        verification_url = extract_verification_link(acct["notes"]) or ""
+        try:
+            from services.verification import extract_verification_link
+            verification_url = extract_verification_link(acct["notes"]) or ""
 
-        task = asyncio.ensure_future(
-            run_auto_login(
+            result = await run_auto_login(
                 profile_id, email, acct["password"], acct["totp_secret"],
                 acct["recovery_email"], verification_url,
                 on_step=step, cancel_token=cancel_token,
             )
-        )
-        if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+            if result and result.success:
+                _save_cookies(acct["id"], profile_id)
+                step({"type": "step", "name": f"登录 {email}", "status": "ok", "message": "已保存 cookies"})
+                return True
+            else:
+                fail_list.append(f"{email}: {result.message if result else '未知错误'}")
+                return False
+        except Exception as exc:
+            fail_list.append(f"{email}: {exc}")
             return False
+        finally:
+            # 关闭浏览器
+            try:
+                await browser_manager.stop(profile_id)
+            except Exception:
+                pass
 
-        result, error = _get_task_result(task)
-        if result and result.success:
+    # --- 并发启动所有登录任务 (限制最多 3 个浏览器同时运行) ---
+    MAX_CONCURRENT_BROWSERS = 7
+    sem = asyncio.Semaphore(MAX_CONCURRENT_BROWSERS)
+
+    async def _login_with_limit(i: int, acct: dict) -> bool:
+        async with sem:
+            return await _login_one(i, acct)
+
+    tasks = [
+        asyncio.ensure_future(_login_with_limit(i, acct))
+        for i, acct in enumerate(accounts_to_login)
+    ]
+
+    # 持续转发步骤消息直到所有任务完成
+    all_done_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
+    while not all_done_task.done():
+        await _flush_step_messages(ws, msg_queue)
+        if not await _poll_cancel_command(ws, cancel_token):
+            # WebSocket 断开，取消所有任务
+            for t in tasks:
+                t.cancel()
+            return False
+    await _flush_step_messages(ws, msg_queue)
+
+    # 汇总结果
+    results = all_done_task.result()
+    for r in results:
+        if r is True:
             success_count += 1
-            _save_cookies(acct["id"], profile_id)
-            step({"type": "step", "name": f"登录 {email}", "status": "ok", "message": "已保存 cookies"})
-        else:
-            fail_list.append(f"{email}: {result.message if result else error}")
-
-        # 关闭浏览器
-        try:
-            await browser_manager.stop(profile_id)
-        except Exception:
-            pass
 
     summary = f"批量登录完成: 成功 {success_count}/{total}"
     if fail_list:
@@ -1142,16 +1435,26 @@ async def automation_websocket(ws: WebSocket):
                     await ws.send_json({"type": "error", "message": "账号不存在"})
                     continue
 
-                profile = (
+                # 查找该账号的浏览器配置, 优先找正在运行的
+                profiles = (
                     db.query(BrowserProfile)
                     .filter(BrowserProfile.account_id == account_id)
-                    .first()
+                    .all()
                 )
-                # family-discover 不强制要求浏览器运行
-                if action == ACTION_FAMILY_DISCOVER:
+                profile = None
+                for p in profiles:
+                    if browser_manager.is_running(p.id):
+                        profile = p
+                        break
+                if not profile and profiles:
+                    # 没有运行中的, 取最新创建的
+                    profile = profiles[-1]
+                # family-discover / pool-replace-all / pool-batch-login 不强制要求浏览器运行
+                # login 也豁免 (启动浏览器后自动登录, 避免竞态)
+                if action in (ACTION_FAMILY_DISCOVER, ACTION_POOL_REPLACE_ALL, ACTION_POOL_BATCH_LOGIN, "login"):
                     profile_id = profile.id if profile else None
                 elif not profile or not browser_manager.is_running(profile.id):
-                    await ws.send_json({"type": "error", "message": "浏览器未启动"})
+                    await ws.send_json({"type": "error", "message": f"浏览器未启动 (action={action})"})
                     continue
                 else:
                     profile_id = profile.id
@@ -1339,6 +1642,18 @@ async def automation_websocket(ws: WebSocket):
                     totp_secret=totp_secret,
                     remove_emails=rotate_remove,
                     new_count=rotate_count,
+                ):
+                    return
+                continue
+            elif action == ACTION_POOL_REPLACE_ALL:
+                if not await _handle_pool_replace_all(
+                    ws=ws,
+                    msg_queue=msg_queue,
+                    cancel_token=cancel_token,
+                    profile_id=profile_id,
+                    account_id=account_id,
+                    password=password,
+                    totp_secret=totp_secret,
                 ):
                     return
                 continue

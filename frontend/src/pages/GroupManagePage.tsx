@@ -87,7 +87,7 @@ const GroupManagePage: React.FC = () => {
 
   const loadAccounts = async () => {
     try {
-      const { data } = await getAccounts('', undefined, undefined, 1, 999);
+      const { data } = await getAccounts({ page: 1, pageSize: 999 });
       setAccounts(data.accounts);
     } catch {
       message.error('加载账号失败');
