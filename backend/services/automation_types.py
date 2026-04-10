@@ -156,8 +156,6 @@ class FamilyDiscoverResult:
     cookies_expired: bool = False
     subscription_status: str = ""
     subscription_expiry: str = ""
-    country: str = ""
-    country_cn: str = ""
 
     def to_dict(self):
         data = {

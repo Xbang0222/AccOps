@@ -94,7 +94,7 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
         self.assertEqual(error_message, "boom")
 
-    async def test_sync_account_state_after_login_updates_group_subscription_and_country(self) -> None:
+    async def test_sync_account_state_after_login_updates_subscription(self) -> None:
         discover_result = type(
             "DiscoverResult",
             (),
@@ -103,17 +103,13 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
                 "message": "ok",
                 "subscription_status": "ultra",
                 "subscription_expiry": "Mar 23, 2026",
-                "country": "United States",
-                "country_cn": "美国",
             },
         )()
 
         with patch("routers.automation.browser_manager.get_cookies", return_value={"SID": "cookie"}), patch(
             "routers.automation.discover_family_by_cookies",
             return_value=discover_result,
-        ) as discover_mock, patch("routers.automation.sync_group_from_discover") as sync_group_mock, patch(
-            "routers.automation._save_subscription_status"
-        ) as save_subscription_mock, patch("routers.automation._save_country") as save_country_mock:
+        ) as discover_mock, patch("routers.automation._save_subscription_status") as save_subscription_mock:
             _sync_account_state_after_login(
                 account_id=7,
                 profile_id=9,
@@ -124,9 +120,7 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
             )
 
         discover_mock.assert_called_once()
-        sync_group_mock.assert_called_once_with(7, discover_result)
         save_subscription_mock.assert_called_once_with(7, "ultra", "Mar 23, 2026")
-        save_country_mock.assert_called_once_with(7, "United States", "美国")
 
     async def test_automation_websocket_sends_result_message_after_login_success(self) -> None:
         token = create_access_token({"sub": "user"})

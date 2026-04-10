@@ -133,17 +133,6 @@ def _save_oauth_credential(account_id: int, credential: dict):
         logger.warning(f"[oauth] 保存 OAuth 凭证失败: {e}")
 
 
-def _save_country(account_id: int, country: str, country_cn: str = ""):
-    """保存账号地区信息到数据库"""
-    if not country:
-        return
-    try:
-        update_account_fields(account_id, country=country, country_cn=country_cn)
-        logger.info(f"[country] 已保存地区 → account #{account_id}: {country} ({country_cn})")
-    except Exception as e:
-        logger.warning(f"[country] 保存地区失败: {e}")
-
-
 def _sync_account_state_after_login(
     account_id: int,
     profile_id: int,
@@ -172,10 +161,9 @@ def _sync_account_state_after_login(
             logger.warning(f"[login-sync] account #{account_id} 状态同步失败: {result.message}")
             return
 
-        # 仅同步订阅状态和地区，不触发分组同步（避免覆盖用户手动设置的分组关系）
+        # 仅同步订阅状态，不触发分组同步（避免覆盖用户手动设置的分组关系）
         # 分组同步应通过用户主动执行 discover 操作触发
         _save_subscription_status(account_id, result.subscription_status, result.subscription_expiry)
-        _save_country(account_id, result.country, result.country_cn)
     except Exception as e:
         logger.warning(f"[login-sync] account #{account_id} 状态同步异常: {e}")
 
@@ -1332,8 +1320,6 @@ async def discover_family(req: AccountActionRequest, db: Session = Depends(get_d
         sync_group_from_discover(req.account_id, result)
         # 保存订阅状态
         _save_subscription_status(req.account_id, result.subscription_status, result.subscription_expiry)
-        # 保存地区信息
-        _save_country(req.account_id, result.country, result.country_cn)
 
     return result.to_dict()
 
@@ -1587,7 +1573,6 @@ async def automation_websocket(ws: WebSocket):
                 if dr and dr.success:
                     sync_group_from_discover(account_id, dr)
                     _save_subscription_status(account_id, dr.subscription_status, dr.subscription_expiry)
-                    _save_country(account_id, dr.country, dr.country_cn)
                 await ws.send_json({
                     "type": "result",
                     "success": dr.success if dr else False,

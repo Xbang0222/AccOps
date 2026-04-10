@@ -308,23 +308,11 @@ def _discover_from_cookies(cookies: dict) -> FamilyDiscoverResult:
             except Exception as e:
                 logger.warning(f"[discover] 查询订阅状态失败: {e}")
 
-            # 查询账号地区
-            country = ""
-            country_cn = ""
-            try:
-                country_info = api.query_country()
-                country = country_info.get("country", "")
-                country_cn = country_info.get("country_cn", "")
-            except Exception as e:
-                logger.warning(f"[discover] 查询地区失败: {e}")
-
             if not members_info["has_family"]:
                 return FamilyDiscoverResult(
                     success=True, has_group=False, message="无家庭组",
                     subscription_status=sub_status,
                     subscription_expiry=sub_expiry,
-                    country=country,
-                    country_cn=country_cn,
                 )
 
             role = "manager" if members_info["is_admin"] else "member"
@@ -351,8 +339,6 @@ def _discover_from_cookies(cookies: dict) -> FamilyDiscoverResult:
                 message=f"家庭组: {role}, {members_info['member_count']} 成员",
                 subscription_status=sub_status,
                 subscription_expiry=sub_expiry,
-                country=country,
-                country_cn=country_cn,
             )
     except TokenError:
         return FamilyDiscoverResult(
