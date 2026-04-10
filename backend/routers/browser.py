@@ -1,7 +1,7 @@
 """浏览器配置路由 - Profile CRUD + 启动/停止"""
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 
 from deps import verify_token
@@ -73,13 +73,13 @@ async def list_profiles(db: Session = Depends(get_db)):
     return {"profiles": [_to_dict(p, running_ids) for p in profiles]}
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_profile(data: BrowserProfileCreate, db: Session = Depends(get_db)):
     """创建浏览器配置"""
     if data.account_id:
         account = db.query(Account).get(data.account_id)
         if not account:
-            raise HTTPException(status_code=400, detail="关联账号不存在")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="关联账号不存在")
 
     profile = BrowserProfile(**data.model_dump())
     db.add(profile)
@@ -96,7 +96,7 @@ async def get_profile(profile_id: int, db: Session = Depends(get_db)):
     """获取单个浏览器配置"""
     p = db.query(BrowserProfile).get(profile_id)
     if not p:
-        raise HTTPException(status_code=404, detail="配置不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在")
     running_ids = browser_manager.get_running_ids()
     return _to_dict(p, running_ids)
 
@@ -110,10 +110,10 @@ async def update_profile(
     """更新浏览器配置"""
     profile = db.query(BrowserProfile).get(profile_id)
     if not profile:
-        raise HTTPException(status_code=404, detail="配置不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在")
 
     if browser_manager.is_running(profile_id):
-        raise HTTPException(status_code=400, detail="浏览器运行中, 请先停止再修改")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="浏览器运行中, 请先停止再修改")
 
     for key, value in data.model_dump().items():
         setattr(profile, key, value)
@@ -126,10 +126,10 @@ async def delete_profile(profile_id: int, db: Session = Depends(get_db)):
     """删除浏览器配置"""
     profile = db.query(BrowserProfile).get(profile_id)
     if not profile:
-        raise HTTPException(status_code=404, detail="配置不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在")
 
     if browser_manager.is_running(profile_id):
-        raise HTTPException(status_code=400, detail="浏览器运行中, 请先停止再删除")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="浏览器运行中, 请先停止再删除")
 
     db.delete(profile)
     db.commit()
@@ -148,15 +148,15 @@ async def launch_browser(profile_id: int, db: Session = Depends(get_db)):
     """启动浏览器"""
     profile = db.query(BrowserProfile).get(profile_id)
     if not profile:
-        raise HTTPException(status_code=404, detail="配置不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在")
 
     try:
         instance = await browser_manager.launch(profile)
         return {"message": "浏览器已启动", "profile_id": instance.profile_id}
     except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"启动失败: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"启动失败: {e}")
 
 
 @router.post("/{profile_id}/stop")
@@ -166,7 +166,7 @@ async def stop_browser(profile_id: int):
         await browser_manager.stop(profile_id)
         return {"message": "浏览器已停止"}
     except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/{profile_id}/status")
@@ -180,13 +180,13 @@ async def clear_profile_data(profile_id: int, db: Session = Depends(get_db)):
     """清除浏览器数据（保留配置记录）"""
     profile = db.query(BrowserProfile).get(profile_id)
     if not profile:
-        raise HTTPException(status_code=404, detail="配置不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在")
 
     if browser_manager.is_running(profile_id):
-        raise HTTPException(status_code=400, detail="浏览器运行中, 请先停止再清除数据")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="浏览器运行中, 请先停止再清除数据")
 
     try:
         browser_manager.delete_profile_data(profile_id)
         return {"message": "浏览器数据已清除"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"清除失败: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"清除失败: {e}")

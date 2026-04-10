@@ -13,8 +13,6 @@ import {
   Divider,
   Tag,
   Alert,
-  Progress,
-  Popconfirm,
 } from 'antd';
 import {
   BugOutlined,
@@ -24,23 +22,12 @@ import {
   PhoneOutlined,
   CreditCardOutlined,
   SaveOutlined,
-  DeleteOutlined,
-  DatabaseOutlined,
-  ReloadOutlined,
 } from '@ant-design/icons';
-import { getSettings, updateSettings, getSmsProviders, getStorageStats, cleanAllCaches, type Settings, type StorageStats } from '@/api';
+import { getSettings, updateSettings, getSmsProviders, type Settings } from '@/api';
 import type { SmsProviderConfig } from '@/api/sms';
+import StorageStatsCard from '@/features/settings/StorageStatsCard';
 
 const { Text, Paragraph } = Typography;
-
-/** 字节转人类可读 */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / Math.pow(1024, i);
-  return `${value.toFixed(i >= 2 ? 1 : 0)} ${units[i]}`;
-}
 
 const SettingsPage: React.FC = () => {
   const { message } = App.useApp();
@@ -48,9 +35,6 @@ const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState<SmsProviderConfig[]>([]);
-  const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
-  const [storageLoading, setStorageLoading] = useState(false);
-  const [cleaning, setCleaning] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -64,46 +48,21 @@ const SettingsPage: React.FC = () => {
     }
   }, [message]);
 
-  const fetchStorageStats = useCallback(async () => {
-    setStorageLoading(true);
-    try {
-      const { data } = await getStorageStats();
-      setStorageStats(data);
-    } catch {
-      message.error('获取存储信息失败');
-    } finally {
-      setStorageLoading(false);
-    }
-  }, [message]);
-
   useEffect(() => {
     fetchSettings();
-    fetchStorageStats();
-  }, [fetchSettings, fetchStorageStats]);
+  }, [fetchSettings]);
 
-  const handleCleanCaches = async () => {
-    setCleaning(true);
-    try {
-      const { data } = await cleanAllCaches();
-      const freedStr = formatBytes(data.freed_bytes);
-      message.success(`清理完成！释放 ${freedStr}，清理了 ${data.cleaned_count} 个 profile`);
-      if (data.skipped_running > 0) {
-        message.info(`跳过 ${data.skipped_running} 个运行中的浏览器`);
-      }
-      fetchStorageStats();
-    } catch {
-      message.error('清理失败');
-    } finally {
-      setCleaning(false);
-    }
-  };
-
-  const handleToggleDebug = async (checked: boolean) => {
+  /** Save a single setting key-value and sync local state */
+  const updateSetting = async (
+    key: keyof Settings,
+    value: unknown,
+    successMsg: string,
+  ): Promise<void> => {
     setSaving(true);
     try {
-      const { data } = await updateSettings({ debug_mode: checked });
+      const { data } = await updateSettings({ [key]: value });
       setSettings(data);
-      message.success(checked ? '调试模式已开启' : '调试模式已关闭');
+      message.success(successMsg);
     } catch {
       message.error('保存设置失败');
     } finally {
@@ -111,18 +70,11 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleToggleHeadless = async (checked: boolean) => {
-    setSaving(true);
-    try {
-      const { data } = await updateSettings({ headless_mode: checked });
-      setSettings(data);
-      message.success(checked ? '无头模式已开启' : '无头模式已关闭');
-    } catch {
-      message.error('保存设置失败');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const handleToggleDebug = (checked: boolean) =>
+    updateSetting('debug_mode', checked, checked ? '调试模式已开启' : '调试模式已关闭');
+
+  const handleToggleHeadless = (checked: boolean) =>
+    updateSetting('headless_mode', checked, checked ? '无头模式已开启' : '无头模式已关闭');
 
   if (loading) {
     return (
@@ -386,111 +338,7 @@ const SettingsPage: React.FC = () => {
       </Card>
 
       {/* 存储清理 */}
-      <Card
-        style={{ marginTop: 16 }}
-        title={
-          <Space>
-            <DatabaseOutlined />
-            <span>存储清理</span>
-            {storageStats && storageStats.total_bytes > 0 && (
-              <Tag color={storageStats.total_bytes > 5 * 1024 * 1024 * 1024 ? 'red' : storageStats.total_bytes > 1024 * 1024 * 1024 ? 'orange' : 'default'}>
-                {formatBytes(storageStats.total_bytes)}
-              </Tag>
-            )}
-          </Space>
-        }
-        extra={
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            onClick={fetchStorageStats}
-            loading={storageLoading}
-          >
-            刷新
-          </Button>
-        }
-      >
-        {storageLoading && !storageStats ? (
-          <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <Spin />
-          </div>
-        ) : storageStats ? (
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                marginBottom: 16,
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <Text strong style={{ fontSize: 15 }}>
-                  浏览器 Profile 缓存
-                </Text>
-                <Paragraph
-                  type="secondary"
-                  style={{ marginBottom: 0, marginTop: 4 }}
-                >
-                  每个浏览器 profile 会自动生成 Chromium 缓存（模型、Safe Browsing、TTS 引擎等），这些数据不影响登录态和 cookies，可以安全清理
-                </Paragraph>
-              </div>
-            </div>
-
-            <Flex gap={24} style={{ marginBottom: 16 }}>
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>Profile 数量</Text>
-                <div><Text strong style={{ fontSize: 20 }}>{storageStats.profile_count}</Text></div>
-              </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>总占用</Text>
-                <div><Text strong style={{ fontSize: 20 }}>{formatBytes(storageStats.total_bytes)}</Text></div>
-              </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>可清理缓存</Text>
-                <div>
-                  <Text strong style={{ fontSize: 20, color: storageStats.cleanable_bytes > 1024 * 1024 * 1024 ? '#f5222d' : undefined }}>
-                    {formatBytes(storageStats.cleanable_bytes)}
-                  </Text>
-                </div>
-              </div>
-              {storageStats.total_bytes > 0 && (
-                <div>
-                  <Text type="secondary" style={{ fontSize: 12 }}>缓存占比</Text>
-                  <div>
-                    <Progress
-                      type="circle"
-                      size={48}
-                      percent={Math.round((storageStats.cleanable_bytes / storageStats.total_bytes) * 100)}
-                      strokeColor={storageStats.cleanable_bytes > 1024 * 1024 * 1024 ? '#f5222d' : '#1890ff'}
-                    />
-                  </div>
-                </div>
-              )}
-            </Flex>
-
-            <Popconfirm
-              title="确认清理缓存？"
-              description={`将清理 ${storageStats.profile_count} 个 profile 的 Chromium 缓存数据，预计释放 ${formatBytes(storageStats.cleanable_bytes)}。运行中的浏览器会自动跳过，cookies 和登录态不受影响。`}
-              onConfirm={handleCleanCaches}
-              okText="确认清理"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-            >
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                loading={cleaning}
-                disabled={!storageStats.cleanable_bytes}
-              >
-                清理所有缓存
-              </Button>
-            </Popconfirm>
-          </div>
-        ) : (
-          <Text type="secondary">无法获取存储信息</Text>
-        )}
-      </Card>
+      <StorageStatsCard />
     </div>
   );
 };

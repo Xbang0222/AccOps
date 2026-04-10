@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { theme as antTheme } from 'antd';
 import { useThemeMode, type ThemeMode } from '@/hooks/useThemeMode';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import './MainLayout.css';
 
 const { Header, Sider, Content } = Layout;
@@ -146,7 +147,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
                 : '0 1px 4px rgba(0, 0, 0, 0.04)',
             }}
           >
-            <Outlet />
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </Content>
       </Layout>

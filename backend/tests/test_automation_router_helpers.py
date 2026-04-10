@@ -9,10 +9,14 @@ from fastapi import WebSocketDisconnect
 
 from deps import create_access_token
 from models.orm import Account, BrowserProfile
-from routers.automation import (
+from routers.automation_helpers import (
     _create_step_handler,
     _get_task_result,
+)
+from routers.automation import (
     _sync_account_state_after_login,
+)
+from routers.automation_ws import (
     automation_websocket,
 )
 
@@ -149,13 +153,13 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
             await task
             return True
 
-        with patch("routers.automation.get_db_session", fake_db_session), patch(
-            "routers.automation.browser_manager.is_running",
+        with patch("routers.automation_ws.get_db_session", fake_db_session), patch(
+            "routers.automation_ws.browser_manager.is_running",
             return_value=True,
-        ), patch("routers.automation.run_auto_login", return_value=result), patch(
-            "routers.automation._drain_task_queue",
+        ), patch("routers.automation_ws.run_auto_login", return_value=result), patch(
+            "routers.automation_ws._drain_task_queue",
             side_effect=fake_drain_task_queue,
-        ), patch("routers.automation._handle_login_success") as handle_login_success_mock:
+        ), patch("routers.automation_ws._handle_login_success") as handle_login_success_mock:
             await automation_websocket(ws)
 
         self.assertTrue(ws.accepted)

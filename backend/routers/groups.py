@@ -1,5 +1,5 @@
 """分组路由 - 分组 CRUD、成员管理、号池管理"""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 from typing import List
 
@@ -26,11 +26,11 @@ def get_group(group_id: int, svc: GroupService = Depends(get_group_service)):
     """获取分组详情（含成员）"""
     group = svc.get_with_accounts(group_id)
     if not group:
-        raise HTTPException(status_code=404, detail="分组不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分组不存在")
     return group
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=status.HTTP_201_CREATED)
 def create_group(
     data: GroupCreate,
     svc: GroupService = Depends(get_group_service),
@@ -76,7 +76,7 @@ def add_account(
         svc.add_account(group_id, account_id)
         return {"message": "账号已添加到分组"}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.delete("/accounts/{account_id}")
@@ -100,7 +100,7 @@ def set_main_account(
         svc.set_main_account(group_id, account_id)
         return {"message": "主号设置成功"}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 # ── 号池管理 ──
@@ -152,7 +152,7 @@ def mark_pool_unusable(
 ):
     """标记号池账号为「无法使用」（地区限制等原因）"""
     if not svc.mark_pool_unusable(account_id):
-        raise HTTPException(status_code=404, detail="账号不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="账号不存在")
     return {"message": "已标记为无法使用"}
 
 
@@ -163,5 +163,5 @@ def clear_pool_status(
 ):
     """清除号池状态标记，恢复正常"""
     if not svc.clear_pool_status(account_id):
-        raise HTTPException(status_code=404, detail="账号不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="账号不存在")
     return {"message": "已恢复正常状态"}

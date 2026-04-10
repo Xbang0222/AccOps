@@ -1,7 +1,7 @@
 """账号路由 - 账号 CRUD、分组/标签查询、TOTP、批量导入"""
 import time
 import pyotp
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 
 from deps import verify_token, get_account_service
 from models.schemas import AccountCreate, AccountUpdate, AccountImportRequest
@@ -50,11 +50,11 @@ def get_account(account_id: int, svc: AccountService = Depends(get_account_servi
     """获取单个账号"""
     account = svc.get_by_id(account_id)
     if not account:
-        raise HTTPException(status_code=404, detail="账号不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="账号不存在")
     return account
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=status.HTTP_201_CREATED)
 def create_account(
     data: AccountCreate,
     svc: AccountService = Depends(get_account_service),
@@ -72,7 +72,7 @@ def create_account(
     return {"id": account_id, "message": "账号创建成功"}
 
 
-@router.post("/import", status_code=201)
+@router.post("/import", status_code=status.HTTP_201_CREATED)
 def import_accounts(
     data: AccountImportRequest,
     svc: AccountService = Depends(get_account_service),
@@ -92,7 +92,7 @@ def import_accounts(
     """
     lines = [line.strip() for line in data.text.strip().splitlines() if line.strip()]
     if not lines:
-        raise HTTPException(status_code=400, detail="导入内容为空")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="导入内容为空")
 
     results = {"success": 0, "skipped": 0, "failed": 0, "details": []}
 
@@ -168,9 +168,9 @@ def get_totp_code(account_id: int, svc: AccountService = Depends(get_account_ser
     """获取账号的 TOTP 验证码"""
     account = svc.get_by_id(account_id)
     if not account:
-        raise HTTPException(status_code=404, detail="账号不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="账号不存在")
     if not account.get("totp_secret"):
-        raise HTTPException(status_code=400, detail="该账号未设置2FA密钥")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该账号未设置2FA密钥")
 
     try:
         totp = pyotp.TOTP(account["totp_secret"].replace(' ', ''))
@@ -178,4 +178,4 @@ def get_totp_code(account_id: int, svc: AccountService = Depends(get_account_ser
         remaining = 30 - (int(time.time()) % 30)
         return {"code": code, "remaining": remaining, "formatted": f"{code[:3]} {code[3:]}"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"生成验证码失败: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"生成验证码失败: {e}")

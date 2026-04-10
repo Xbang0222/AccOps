@@ -1,5 +1,5 @@
 """认证路由 - 密码设置、登录"""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 
 from deps import (
     get_auth_service,
@@ -24,11 +24,11 @@ async def setup_password(
 ):
     """首次设置主密码"""
     if auth.has_master_password():
-        raise HTTPException(status_code=400, detail="主密码已设置")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="主密码已设置")
     if request.password != request.confirm_password:
-        raise HTTPException(status_code=400, detail="两次密码不一致")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="两次密码不一致")
     if len(request.password) < 6:
-        raise HTTPException(status_code=400, detail="密码长度至少6位")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="密码长度至少6位")
 
     auth.set_master_password(request.password)
     return {"access_token": create_access_token({"sub": "user"}), "token_type": "bearer"}
@@ -41,6 +41,6 @@ async def login(
 ):
     """登录验证"""
     if not auth.verify_master_password(request.password):
-        raise HTTPException(status_code=401, detail="密码错误")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="密码错误")
 
     return {"access_token": create_access_token({"sub": "user"}), "token_type": "bearer"}

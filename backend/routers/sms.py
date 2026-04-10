@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -36,9 +36,9 @@ def _get_provider_api(db: Session, provider_id: int = None):
         else:
             p = db.query(SmsProvider).first()
     if not p:
-        raise HTTPException(status_code=400, detail="未找到接码提供商，请先添加配置")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未找到接码提供商，请先添加配置")
     if not p.api_key:
-        raise HTTPException(status_code=400, detail=f"提供商 [{p.name}] 未配置 API Key")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"提供商 [{p.name}] 未配置 API Key")
     return create_provider(p.provider_type, p.api_key), p
 
 
@@ -116,7 +116,7 @@ def update_provider_route(provider_id: int, body: ProviderUpdateBody, db: Sessio
     """更新提供商"""
     p = db.query(SmsProvider).get(provider_id)
     if not p:
-        raise HTTPException(status_code=404, detail="提供商不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="提供商不存在")
 
     for field in ["name", "provider_type", "api_key", "default_country", "default_service", "notes"]:
         val = getattr(body, field, None)
@@ -133,7 +133,7 @@ def delete_provider_route(provider_id: int, db: Session = Depends(get_db)):
     """删除提供商"""
     p = db.query(SmsProvider).get(provider_id)
     if not p:
-        raise HTTPException(status_code=404, detail="提供商不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="提供商不存在")
     db.delete(p)
     db.commit()
     return {"ok": True}
@@ -151,7 +151,7 @@ def get_balance(provider_id: Optional[int] = None, db: Session = Depends(get_db)
         p.updated_at = datetime.now(timezone.utc)
         db.commit()
         return {"balance": result}
-    raise HTTPException(status_code=400, detail=result)
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result)
 
 
 # ── 购买号码 ─────────────────────────────────────────
@@ -167,7 +167,7 @@ def request_number(body: RequestNumberBody, db: Session = Depends(get_db)):
         max_price=body.max_price,
     )
     if not ok:
-        raise HTTPException(status_code=400, detail=data.get("error", str(data)))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=data.get("error", str(data)))
 
     activation = SmsActivation(
         activation_id=data["activation_id"],
