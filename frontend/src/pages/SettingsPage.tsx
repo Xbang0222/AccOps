@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Card,
   Switch,
@@ -29,7 +29,7 @@ import StorageStatsCard from '@/features/settings/StorageStatsCard';
 
 const { Text, Paragraph } = Typography;
 
-const SettingsPage: React.FC = () => {
+function SettingsPage() {
   const { message } = App.useApp();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,6 +121,7 @@ const SettingsPage: React.FC = () => {
             checked={settings?.debug_mode}
             onChange={handleToggleDebug}
             loading={saving}
+            aria-label="启用调试模式"
           />
         </div>
 
@@ -183,6 +184,7 @@ const SettingsPage: React.FC = () => {
             checked={settings?.headless_mode}
             onChange={handleToggleHeadless}
             loading={saving}
+            aria-label="启用无头模式"
           />
         </div>
 
@@ -228,6 +230,7 @@ const SettingsPage: React.FC = () => {
           <Select
             style={{ width: 200 }}
             placeholder="选择提供商"
+            aria-label="选择默认接码提供商"
             value={settings?.default_sms_provider_id || undefined}
             onChange={async (val) => {
               setSaving(true);
@@ -341,6 +344,6 @@ const SettingsPage: React.FC = () => {
       <StorageStatsCard />
     </div>
   );
-};
+}
 
 export default SettingsPage;

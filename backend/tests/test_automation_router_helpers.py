@@ -13,8 +13,8 @@ from routers.automation_helpers import (
     _create_step_handler,
     _get_task_result,
 )
-from routers.automation import (
-    _sync_account_state_after_login,
+from services.automation_utils import (
+    sync_account_state_after_login,
 )
 from routers.automation_ws import (
     automation_websocket,
@@ -110,11 +110,11 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
             },
         )()
 
-        with patch("routers.automation.browser_manager.get_cookies", return_value={"SID": "cookie"}), patch(
-            "routers.automation.discover_family_by_cookies",
+        with patch("services.automation_utils.browser_manager.get_cookies", return_value={"SID": "cookie"}), patch(
+            "services.automation_utils.discover_family_by_cookies",
             return_value=discover_result,
-        ) as discover_mock, patch("routers.automation._save_subscription_status") as save_subscription_mock:
-            _sync_account_state_after_login(
+        ) as discover_mock, patch("services.automation_utils.save_subscription_status") as save_subscription_mock:
+            sync_account_state_after_login(
                 account_id=7,
                 profile_id=9,
                 email="user@example.com",
@@ -159,7 +159,7 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
         ), patch("routers.automation_ws.run_auto_login", return_value=result), patch(
             "routers.automation_ws._drain_task_queue",
             side_effect=fake_drain_task_queue,
-        ), patch("routers.automation_ws._handle_login_success") as handle_login_success_mock:
+        ), patch("routers.automation_ws.handle_login_success") as handle_login_success_mock:
             await automation_websocket(ws)
 
         self.assertTrue(ws.accepted)

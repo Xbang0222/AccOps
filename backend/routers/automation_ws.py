@@ -47,12 +47,12 @@ from routers.automation_helpers import (
     _drain_task_queue,
     _get_task_result,
 )
-from routers.automation import (
-    _decrypt,
-    _save_cookies,
-    _save_oauth_credential,
-    _handle_login_success,
-    _save_subscription_status,
+from services.automation_utils import (
+    decrypt_field,
+    save_browser_cookies,
+    save_oauth_credential,
+    handle_login_success,
+    save_subscription_status,
 )
 from routers.automation_swap import _handle_family_swap
 
@@ -132,9 +132,9 @@ async def _handle_pool_batch_login(
             accounts_to_login.append({
                 "id": row.id,
                 "email": row.email,
-                "password": _decrypt(row.password),
-                "totp_secret": _decrypt(row.totp_secret),
-                "recovery_email": _decrypt(row.recovery_email),
+                "password": decrypt_field(row.password),
+                "totp_secret": decrypt_field(row.totp_secret),
+                "recovery_email": decrypt_field(row.recovery_email),
                 "notes": row.notes or "",
             })
 
@@ -205,7 +205,7 @@ async def _handle_pool_batch_login(
                 on_step=step, cancel_token=cancel_token,
             )
             if result and result.success:
-                _save_cookies(acct["id"], profile_id)
+                save_browser_cookies(acct["id"], profile_id)
                 step({"type": "step", "name": f"登录 {email}", "status": "ok", "message": "已保存 cookies"})
                 return True
             else:
@@ -347,9 +347,9 @@ async def automation_websocket(ws: WebSocket):
                 else:
                     profile_id = profile.id
                 email = account.email
-                password = _decrypt(account.password)
-                totp_secret = _decrypt(account.totp_secret) or ""
-                recovery_email = _decrypt(account.recovery_email) or ""
+                password = decrypt_field(account.password)
+                totp_secret = decrypt_field(account.totp_secret) or ""
+                recovery_email = decrypt_field(account.recovery_email) or ""
                 # 从 notes 中提取验证链接
                 from services.verification import extract_verification_link
                 verification_url = extract_verification_link(account.notes or "") or ""
@@ -474,7 +474,7 @@ async def automation_websocket(ws: WebSocket):
 
                 if dr and dr.success:
                     sync_group_from_discover(account_id, dr)
-                    _save_subscription_status(account_id, dr.subscription_status, dr.subscription_expiry)
+                    save_subscription_status(account_id, dr.subscription_status, dr.subscription_expiry)
                 await ws.send_json({
                     "type": "result",
                     "success": dr.success if dr else False,
@@ -559,7 +559,7 @@ async def automation_websocket(ws: WebSocket):
                 # 操作完成后自动同步分组
                 if result and result.success:
                     if action == ACTION_LOGIN:
-                        _handle_login_success(
+                        handle_login_success(
                             account_id,
                             profile_id,
                             email,
@@ -568,10 +568,10 @@ async def automation_websocket(ws: WebSocket):
                             recovery_email,
                         )
                     else:
-                        _save_cookies(account_id, profile_id)
+                        save_browser_cookies(account_id, profile_id)
                     # OAuth 成功后保存凭证
                     if action == ACTION_OAUTH and hasattr(result, 'extra') and result.extra and result.extra.get("credential"):
-                        _save_oauth_credential(account_id, result.extra["credential"])
+                        save_oauth_credential(account_id, result.extra["credential"])
                 if result and action in (ACTION_FAMILY_CREATE, ACTION_FAMILY_ACCEPT, ACTION_FAMILY_REMOVE, ACTION_FAMILY_LEAVE):
                     extra_data = {}
                     if action == ACTION_FAMILY_REMOVE:

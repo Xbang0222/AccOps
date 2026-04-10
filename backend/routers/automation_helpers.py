@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import queue
+import re
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -58,9 +59,16 @@ async def _drain_task_queue(ws: WebSocket, msg_queue: queue.Queue, task, cancel_
     return True
 
 
+def _sanitize_error(exc: Exception) -> str:
+    """Truncate and strip internal file paths from exception messages."""
+    msg = str(exc)[:200]
+    msg = re.sub(r'/[\w/.-]+\.py:\d+', '[internal]', msg)
+    return msg
+
+
 def _get_task_result(task):
     """提取已完成任务的结果与错误消息。"""
     exception = task.exception()
     if exception:
-        return None, str(exception)
+        return None, _sanitize_error(exception)
     return task.result(), ""

@@ -9,6 +9,7 @@ import {
   Tag,
   Progress,
   Popconfirm,
+  theme,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -24,7 +25,7 @@ const FIVE_GB = 5 * ONE_GB;
 
 /** Bytes to human-readable string */
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.min(
     Math.floor(Math.log(bytes) / Math.log(1024)),
@@ -40,8 +41,9 @@ function getSizeTagColor(totalBytes: number): string | undefined {
   return 'default';
 }
 
-const StorageStatsCard: React.FC = () => {
+function StorageStatsCard() {
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -167,7 +169,7 @@ const StorageStatsCard: React.FC = () => {
                     fontSize: 20,
                     color:
                       storageStats.cleanable_bytes > ONE_GB
-                        ? '#f5222d'
+                        ? token.colorError
                         : undefined,
                   }}
                 >
@@ -191,8 +193,8 @@ const StorageStatsCard: React.FC = () => {
                     )}
                     strokeColor={
                       storageStats.cleanable_bytes > ONE_GB
-                        ? '#f5222d'
-                        : '#1890ff'
+                        ? token.colorError
+                        : token.colorPrimary
                     }
                   />
                 </div>
@@ -223,6 +225,6 @@ const StorageStatsCard: React.FC = () => {
       )}
     </Card>
   );
-};
+}
 
 export default StorageStatsCard;

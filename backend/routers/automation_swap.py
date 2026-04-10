@@ -35,10 +35,10 @@ from routers.automation_helpers import (
     _drain_task_queue,
     _get_task_result,
 )
-from routers.automation import (
-    _decrypt,
-    _save_cookies,
-    _save_subscription_status,
+from services.automation_utils import (
+    decrypt_field,
+    save_browser_cookies,
+    save_subscription_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,9 +122,9 @@ def _swap_batch_load_sub_accounts(emails: list[str]) -> dict[str, dict]:
             bp = profile_by_account.get(sub.id)
             result[sub.email.lower()] = {
                 "id": sub.id,
-                "password": _decrypt(sub.password),
-                "totp_secret": _decrypt(sub.totp_secret) or "",
-                "recovery_email": _decrypt(sub.recovery_email) or "",
+                "password": decrypt_field(sub.password),
+                "totp_secret": decrypt_field(sub.totp_secret) or "",
+                "recovery_email": decrypt_field(sub.recovery_email) or "",
                 "cookies_json": sub.cookies_json or "",
                 "notes": sub.notes or "",
                 "profile_id": bp.id if bp else None,
@@ -141,9 +141,9 @@ def _swap_load_main_for_discover(account_id: int) -> dict:
         return {
             "cookies_json": main.cookies_json or "",
             "email": main.email,
-            "password": _decrypt(main.password),
-            "totp_secret": _decrypt(main.totp_secret) or "",
-            "recovery_email": _decrypt(main.recovery_email) or "",
+            "password": decrypt_field(main.password),
+            "totp_secret": decrypt_field(main.totp_secret) or "",
+            "recovery_email": decrypt_field(main.recovery_email) or "",
         }
 
 
@@ -356,7 +356,7 @@ async def _swap_phase_login_and_accept(
 
             if result and result.success:
                 login_success += 1
-                _save_cookies(info["id"], sub_profile_id)
+                save_browser_cookies(info["id"], sub_profile_id)
                 await ws.send_json({"type": "step", "name": f"登录 {email}", "status": "ok", "message": "已保存 cookies"})
             else:
                 login_fail.append(f"{email}: {result.message if result else '登录失败'}")
@@ -454,7 +454,7 @@ async def _swap_phase_discover_sync(
 
         if dr and dr.success:
             sync_group_from_discover(account_id, dr)
-            _save_subscription_status(account_id, dr.subscription_status, dr.subscription_expiry)
+            save_subscription_status(account_id, dr.subscription_status, dr.subscription_expiry)
             actual_emails = {
                 m.get("email", "").lower()
                 for m in (dr.members or [])
