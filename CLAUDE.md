@@ -31,17 +31,27 @@ backend/
 │   ├── groups.py               # 分组管理 API (CRUD + 成员管理)
 │   ├── dashboard.py            # 仪表盘 API (统计数据)
 │   ├── browser.py              # 浏览器配置 API (启动/停止/状态)
-│   ├── automation.py           # 自动化 API (REST + WebSocket 实时步骤推送)
+│   ├── automation.py           # 自动化 REST API (登录/家庭组操作)
+│   ├── automation_ws.py        # 自动化 WebSocket (实时步骤推送)
+│   ├── automation_swap.py      # 统一换号操作 (移除→选号→邀请→接受→同步)
+│   ├── automation_helpers.py   # WebSocket 基础设施 (步骤队列/任务轮询)
 │   ├── settings.py             # 系统设置 API (GET/PUT, 存 config 表)
 │   └── sms.py                  # 接码管理 API (提供商 CRUD + 购买/查询/取消)
 ├── services/
 │   ├── account.py              # 账号 CRUD 服务
+│   ├── account_import_parser.py # 账号导入解析器
+│   ├── age_verification.py     # 年龄验证服务
 │   ├── auth.py                 # 认证服务 (密码设置/验证)
+│   ├── auth_steps.py           # 登录步骤处理
 │   ├── automation.py           # 自动化核心逻辑 (StepTracker + 所有自动化函数)
+│   ├── automation_types.py     # 自动化类型定义
+│   ├── automation_utils.py     # 自动化共享工具 (cookies保存/订阅同步/解密)
 │   ├── browser.py              # DrissionPage 浏览器管理 (登录 + rapt 获取)
 │   ├── family_api.py           # Google Family batchexecute RPC 封装 (纯 httpx)
 │   ├── group.py                # 分组 CRUD + 成员管理服务
+│   ├── group_sync.py           # 家庭组同步 (discover结果→数据库)
 │   ├── oauth.py                # OAuth 自动授权 + API 探测 + 自动手机号验证
+│   ├── oauth_support.py        # OAuth 辅助工具
 │   ├── sms_api.py              # 接码平台 API 封装 (HeroSMS / SMS-Bus 多提供商)
 │   └── verification.py         # 验证链接提取
 └── utils/
@@ -62,7 +72,8 @@ frontend/src/
 ├── features/
 │   ├── automation/             # 自动化共享元数据与展示映射
 │   ├── browser/                # 浏览器配置默认值等领域逻辑
-│   ├── group-detail/           # 分组详情组件 (账号卡片 + 日志面板)
+│   ├── group-detail/           # 分组详情组件 (账号卡片 + 日志面板 + 换号操作)
+│   ├── settings/               # 系统设置组件 (StorageStatsCard)
 │   ├── sms/                    # 接码管理组件 (国家列表 + 历史 + 配置弹窗)
 │   └── accountsTableColumns.tsx # 账号表格列定义 (可拖拽列宽)
 ├── pages/
@@ -75,8 +86,7 @@ frontend/src/
 │   └── SettingsPage.tsx         # 系统设置 (调试模式 / 无头模式 / 默认接码提供商)
 ├── components/
 │   ├── AccountModal.tsx         # 账号编辑弹窗
-│   ├── BrowserProfileModal.tsx  # 浏览器配置弹窗
-│   ├── OperationPanel.tsx       # 自动化操作面板 (WebSocket 步骤追踪)
+│   ├── ErrorBoundary.tsx        # 错误边界 (渲染错误优雅降级)
 │   ├── ResizableTitle.tsx       # 可拖拽列宽表头组件 (react-resizable)
 │   └── TOTPDisplay.tsx          # TOTP 验证码显示 + 倒计时
 ├── layouts/
@@ -87,22 +97,25 @@ frontend/src/
 │   └── index.ts                 # TypeScript 类型定义
 ├── utils/
 │   ├── http.ts                  # HTTP 错误消息提取
-│   └── mask.ts                  # 邮箱脱敏工具
+│   ├── mask.ts                  # 邮箱脱敏工具
+│   └── totp.ts                  # TOTP 验证码生成
 └── hooks/
     ├── useAutomationWs.ts       # 自动化 WebSocket hook
     └── useThemeMode.tsx         # 主题模式 Context (system/light/dark)
 ```
 
+> 自动化模块拆分为 4 个文件: `automation.py` (REST) / `automation_ws.py` (WebSocket) / `automation_swap.py` (换号) / `automation_helpers.py` (WS工具)。共享工具函数位于 `services/automation_utils.py`。
+
 ## 环境变量
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `GAM_DATABASE_URL` | 见 `.env.example` | 数据库连接串 |
-| `GAM_SECRET_KEY` | 见 `.env.example` | JWT 签名密钥 |
-| `GAM_TOKEN_EXPIRE_MINUTES` | `480` | Token 有效期（分钟） |
-| `GAM_CORS_ORIGINS` | `http://localhost:5173` | CORS 允许的源，逗号分隔 |
-| `GAM_HOST` | `127.0.0.1` | 服务监听地址 |
-| `GAM_PORT` | `8000` | 服务监听端口 |
+| 变量                       | 默认值                  | 说明                    |
+| -------------------------- | ----------------------- | ----------------------- |
+| `GAM_DATABASE_URL`         | 见 `.env.example`       | 数据库连接串            |
+| `GAM_SECRET_KEY`           | 见 `.env.example`       | JWT 签名密钥            |
+| `GAM_TOKEN_EXPIRE_MINUTES` | `480`                   | Token 有效期（分钟）    |
+| `GAM_CORS_ORIGINS`         | `http://localhost:5173` | CORS 允许的源，逗号分隔 |
+| `GAM_HOST`                 | `127.0.0.1`             | 服务监听地址            |
+| `GAM_PORT`                 | `8000`                  | 服务监听端口            |
 
 ---
 
@@ -111,6 +124,7 @@ frontend/src/
 ### 整体架构
 
 浏览器 (DrissionPage) 只负责两件事:
+
 1. **登录** → 提取 cookies
 2. **密码/TOTP 重验证** → 获取 rapt token
 
@@ -141,24 +155,47 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 ### 自动化函数
 
-| 函数 | 说明 | 方式 |
-|------|------|------|
-| `auto_login_sync()` | 自动登录 Google 账号 | DrissionPage |
-| `create_family_group_sync()` | 创建家庭组 | RPC: nKULBd → Wffnob → c5gch |
-| `send_family_invite_sync()` | 发送家庭组邀请 | RPC: B3vhdd → xN05r |
-| `accept_family_invite_sync()` | 接受家庭组邀请 | RPC: SZ903d |
-| `remove_family_member_sync()` | 移除家庭组成员 | rapt + RPC: Csu7b |
-| `leave_family_group_sync()` | 退出/删除家庭组 | rapt + RPC: Csu7b / hQih3e |
-| `discover_family_group_sync()` | 发现家庭组关系 | RPC: V2esPe |
-| `discover_family_by_cookies()` | 纯 cookies 发现 + 自动登录刷新 | httpx + DrissionPage 回退 |
-| `oauth_sync()` | OAuth 自动授权 + API 探测 + 自动接码验证 | DrissionPage + httpx |
-| `auto_phone_verify_sync()` | Google 手机号验证 (接码平台自动完成) | DrissionPage + HeroSMS/SMS-Bus |
+| 函数                           | 说明                                             | 方式                           |
+| ------------------------------ | ------------------------------------------------ | ------------------------------ |
+| `auto_login_sync()`            | 自动登录 Google 账号                             | DrissionPage                   |
+| `create_family_group_sync()`   | 创建家庭组                                       | RPC: nKULBd → Wffnob → c5gch   |
+| `send_family_invite_sync()`    | 发送家庭组邀请                                   | RPC: B3vhdd → xN05r            |
+| `accept_family_invite_sync()`  | 接受家庭组邀请                                   | RPC: SZ903d                    |
+| `remove_family_member_sync()`  | 移除家庭组成员                                   | rapt + RPC: Csu7b              |
+| `leave_family_group_sync()`    | 退出/删除家庭组                                  | rapt + RPC: Csu7b / hQih3e     |
+| `discover_family_group_sync()` | 发现家庭组关系                                   | RPC: V2esPe                    |
+| `discover_family_by_cookies()` | 纯 cookies 发现 + 自动登录刷新                   | httpx + DrissionPage 回退      |
+| `oauth_sync()`                 | OAuth 自动授权 + API 探测 + 自动接码验证         | DrissionPage + httpx           |
+| `auto_phone_verify_sync()`     | Google 手机号验证 (接码平台自动完成)             | DrissionPage + HeroSMS/SMS-Bus |
+| `_handle_family_swap()`        | 统一换号 (移除→选号→邀请→登录→接受→discover同步) | RPC + DrissionPage             |
 
 每个函数都有对应的异步包装器 `run_xxx()` 用于 API 调用。
+
+### 统一换号操作 (routers/automation_swap.py)
+
+将原有的替换/轮换/一键换号合并为单一 `family-swap` 操作:
+
+**流程阶段:**
+
+1. 自动启动浏览器（如未运行）
+2. 批量移除旧子号（rapt + RPC 批量移除）
+3. 选取新子号（号池自动选取 或 手动指定）
+4. 批量邀请新子号
+5. 登录子号刷新 cookies
+6. 用 cookies 自动接受邀请
+7. 完整 discover 同步（与"同步"按钮一致）
+
+**两种模式:**
+
+- `pool` — 从号池自动选取，指定数量
+- `manual` — 手动指定邮箱列表
+
+**关键改进:** 换号完成后执行完整的 `discover_family_by_cookies` + `sync_group_from_discover`，确保数据库与 Google 实际状态完全一致。
 
 ### OAuth + 自动手机号验证 (services/oauth.py)
 
 **OAuth 流程:**
+
 1. 构建 OAuth URL (Antigravity client_id) → 浏览器打开 → 自动同意授权
 2. 提取 authorization code → 交换 access_token + refresh_token
 3. 获取 project_id (loadCodeAssist / onboardUser)
@@ -166,6 +203,7 @@ cookies 过期时的自动恢复机制 (4 级回退):
 5. 如果返回 403 `VALIDATION_REQUIRED` → 提取 `validation_url` → 自动接码验证
 
 **自动接码验证流程 (auto_phone_verify_sync):**
+
 1. 打开 `validation_url` → 选择 "Verify your phone number"
 2. 从默认接码提供商购买号码
 3. 输入带 `+` 号的完整号码 (Google 自动切换国家)
@@ -174,6 +212,7 @@ cookies 过期时的自动恢复机制 (4 级回退):
 6. 成功判断: URL 包含 `auth_success` 或 `gemini-code-assist`
 
 **关键选择器:**
+
 - 手机号输入: `#phoneNumberId`
 - 验证码输入: `#idvAnyPhonePin`
 - 确认按钮: `#idvanyphoneverifyNext`
@@ -181,12 +220,14 @@ cookies 过期时的自动恢复机制 (4 级回退):
 ### 接码管理 (services/sms_api.py)
 
 多提供商抽象架构:
+
 - `SmsProviderBase` — 抽象基类
 - `HeroSmsProvider` — HeroSMS (SMS-Activate 协议兼容)
 - `SmsBusProvider` — SMS-Bus (独立 REST API)
 - `create_provider(type, api_key)` — 工厂函数
 
 接码 API (routers/sms.py):
+
 - 提供商 CRUD + 余额查询
 - 购买号码 / 查询状态 / 完成 / 取消
 - 历史记录 + 国家/服务/价格查询
@@ -204,6 +245,7 @@ cookies 过期时的自动恢复机制 (4 级回退):
 `FamilyAPI` 类封装所有 Google Family batchexecute RPC:
 
 **纯 HTTP 操作 (只需 cookies):**
+
 - `query_status()` — 查询家庭组状态 (DmVhMc)
 - `query_members()` — 查询成员列表 (V2esPe)
 - `query_subscription()` — 查询订阅状态 (HTTP GET /subscriptions 页面)
@@ -212,6 +254,7 @@ cookies 过期时的自动恢复机制 (4 级回退):
 - `accept_invite()` — 接受邀请 (SZ903d)
 
 **需要 rapt token 的操作:**
+
 - `remove_member(member_user_id, rapt)` — 移除成员 (Csu7b)
 - `leave_family(rapt)` — 退出家庭组 (Csu7b + "me")
 - `delete_family(rapt)` — 删除家庭组 (hQih3e)
@@ -229,14 +272,14 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 ### 页面流程 (已用 RPC 替代，仅供参考)
 
-| 操作 | 页面流程 | 直接 URL |
-|------|---------|---------|
-| 创建家庭组 | details → create → confirm → invitemembers → skip → done | — |
-| 发送邀请 | invitemembers → combobox 输入 → chip → Send | `family/invitemembers` |
-| 接受邀请 | details → pendinginvitations → join/t/{token} → success | `family/pendinginvitations` |
-| 成员退出 | details → Leave → 密码验证 → 确认 | `family/leave` |
-| 管理员删除 | details → Delete → 密码+2FA → 确认 | `family/delete` |
-| 管理员移除 | details → member/{id} → Remove → 密码验证 → 确认 | `family/remove/g/{id}` |
+| 操作       | 页面流程                                                 | 直接 URL                    |
+| ---------- | -------------------------------------------------------- | --------------------------- |
+| 创建家庭组 | details → create → confirm → invitemembers → skip → done | —                           |
+| 发送邀请   | invitemembers → combobox 输入 → chip → Send              | `family/invitemembers`      |
+| 接受邀请   | details → pendinginvitations → join/t/{token} → success  | `family/pendinginvitations` |
+| 成员退出   | details → Leave → 密码验证 → 确认                        | `family/leave`              |
+| 管理员删除 | details → Delete → 密码+2FA → 确认                       | `family/delete`             |
+| 管理员移除 | details → member/{id} → Remove → 密码验证 → 确认         | `family/remove/g/{id}`      |
 
 ### rapt token 机制
 
@@ -247,7 +290,7 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 ### 家庭组限制
 
-- 最多 5 成员 (管理员 + 4 名额)
+- 最多 6 成员 (管理员 + 5 名额)
 - 成员 12 个月内只能切换一次家庭组
 
 ---
@@ -256,11 +299,11 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 存储在数据库 `config` 表 (key-value)，通过 `settings.py` API 读写。
 
-| 设置项 | 说明 |
-|--------|------|
-| `debug_mode` | 调试模式: 自动化步骤详细日志 |
-| `headless_mode` | 无头浏览器模式 (Google 登录不支持，自动登录时强制关闭) |
-| `default_sms_provider_id` | 默认接码提供商 ID |
+| 设置项                    | 说明                                                   |
+| ------------------------- | ------------------------------------------------------ |
+| `debug_mode`              | 调试模式: 自动化步骤详细日志                           |
+| `headless_mode`           | 无头浏览器模式 (Google 登录不支持，自动登录时强制关闭) |
+| `default_sms_provider_id` | 默认接码提供商 ID                                      |
 
 ## 开发指引
 
@@ -298,19 +341,19 @@ curl -s http://localhost:5173 | head -5        # 前端：应返回 HTML
 
 ### 服务地址
 
-| 服务 | 地址 |
-|------|------|
-| 后端 API | http://localhost:8000 |
+| 服务               | 地址                       |
+| ------------------ | -------------------------- |
+| 后端 API           | http://localhost:8000      |
 | API 文档 (Swagger) | http://localhost:8000/docs |
-| 前端 | http://localhost:5173 |
+| 前端               | http://localhost:5173      |
 
 ### 端口说明
 
-| 端口 | 用途 |
-|------|------|
+| 端口   | 用途                   |
+| ------ | ---------------------- |
 | `8000` | FastAPI 后端 (Uvicorn) |
-| `5173` | Vite 前端开发服务器 |
-| `5432` | PostgreSQL 数据库 |
+| `5173` | Vite 前端开发服务器    |
+| `5432` | PostgreSQL 数据库      |
 
 ### 停止服务
 
