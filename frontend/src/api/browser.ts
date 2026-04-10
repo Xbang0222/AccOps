@@ -54,3 +54,27 @@ export const getBrowserStatus = (id: number) =>
 
 export const clearBrowserData = (id: number) =>
   client.delete(`${BASE}/${id}/data`);
+
+export interface StorageStats {
+  total_bytes: number;
+  profile_count: number;
+  cleanable_bytes: number;
+  profiles: {
+    dir_name: string;
+    profile_id: number | null;
+    total_bytes: number;
+    cache_bytes: number;
+  }[];
+}
+
+export interface CleanResult {
+  cleaned_count: number;
+  freed_bytes: number;
+  skipped_running: number;
+}
+
+export const getStorageStats = () =>
+  client.get<StorageStats>(`${BASE}/storage/stats`);
+
+export const cleanAllCaches = () =>
+  client.post<CleanResult>(`${BASE}/storage/clean`);

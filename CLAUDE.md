@@ -266,18 +266,34 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 ### 启动项目
 
-启动前先杀占用端口的残留进程，再启动服务：
+**步骤 1 — 杀残留进程（必须先执行）：**
 
 ```bash
-# 1. 杀端口 (后端 8000 + 前端 5173)
-lsof -ti:8000 | xargs kill -9 2>/dev/null
-lsof -ti:5173 | xargs kill -9 2>/dev/null
+pkill -9 -f "uvicorn app:app" 2>/dev/null; pkill -9 -f "run.py" 2>/dev/null; pkill -9 -f "node.*vite" 2>/dev/null; sleep 1
+```
 
-# 2. 启动后端 (热重载)
-cd backend && uv run python run.py --reload
+> `lsof | xargs kill` 杀不干净 StatReload 子进程，**必须用 `pkill -f` 按进程名杀**。
 
-# 3. 启动前端 (另一个终端)
+**步骤 2 — 启动后端（后台运行）：**
+
+```bash
+cd backend && uv run uvicorn app:app --host 127.0.0.1 --port 8000 --reload --reload-exclude ".browser_profiles"
+```
+
+> ⚠️ 不要用 `uv run python run.py --reload`，StatReload 主进程和子进程竞争端口，被杀后容易残留。直接用 `uvicorn` 命令更可靠。
+> 必须加 `--reload-exclude ".browser_profiles"`，否则清理缓存时文件变化会触发 reload 导致 crash。
+
+**步骤 3 — 启动前端（后台运行）：**
+
+```bash
 cd frontend && pnpm dev
+```
+
+**步骤 4 — 验证启动成功：**
+
+```bash
+curl -s http://localhost:8000/docs | head -5   # 后端：应返回 HTML
+curl -s http://localhost:5173 | head -5        # 前端：应返回 HTML
 ```
 
 ### 服务地址
@@ -296,8 +312,15 @@ cd frontend && pnpm dev
 | `5173` | Vite 前端开发服务器 |
 | `5432` | PostgreSQL 数据库 |
 
+### 停止服务
+
+```bash
+pkill -9 -f "uvicorn app:app" 2>/dev/null; pkill -9 -f "node.*vite" 2>/dev/null
+```
+
 ### 注意事项
 
-- `--reload` 模式使用 StatReload，主进程和子进程共享端口 fd，**重启前务必先杀端口**，否则会报 `Address already in use`
+- **不要用 `run.py --reload`** — StatReload 主进程和子进程共享端口 fd，被杀后残留子进程会持续占用端口，导致 `Address already in use`
+- **不要用 `lsof | xargs kill`** — 杀不干净 StatReload 的多个子进程，用 `pkill -9 -f` 按进程名匹配
 - Google 自动登录强制 `headless=False`，服务器环境需配合 Xvfb
 - 数据库迁移在应用启动时通过 Alembic 自动执行

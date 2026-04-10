@@ -242,20 +242,13 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                     verify_msg = verify_result.message if hasattr(verify_result, "message") else verify_result.get("message", "")
                     if verify_ok:
                         tracker.step("自动接码验证", "ok", verify_msg)
+                        credential.pop("validation_url", None)
                         # 保存最终页面信息
                         credential["verify_final_url"] = page.url
                         try:
                             page.get_screenshot(".verification_final.png")
                         except Exception:
                             pass
-                        # 验证成功后重新探测
-                        tracker.step("重新探测", "info")
-                        api_ok2, api_msg2, _ = probe_api(access_token, project_id)
-                        if api_ok2:
-                            tracker.step("重新探测", "ok", "API 已可用")
-                            credential.pop("validation_url", None)
-                        else:
-                            tracker.step("重新探测", "fail", api_msg2)
                     else:
                         tracker.step("自动接码验证", "fail", verify_msg or "验证失败")
         except Exception as e:

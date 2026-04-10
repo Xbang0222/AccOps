@@ -13,7 +13,7 @@ router = APIRouter(
 
 
 @router.get("")
-async def list_groups(
+def list_groups(
     search: str = "",
     svc: GroupService = Depends(get_group_service),
 ):
@@ -22,7 +22,7 @@ async def list_groups(
 
 
 @router.get("/{group_id}")
-async def get_group(group_id: int, svc: GroupService = Depends(get_group_service)):
+def get_group(group_id: int, svc: GroupService = Depends(get_group_service)):
     """获取分组详情（含成员）"""
     group = svc.get_with_accounts(group_id)
     if not group:
@@ -31,7 +31,7 @@ async def get_group(group_id: int, svc: GroupService = Depends(get_group_service
 
 
 @router.post("", status_code=201)
-async def create_group(
+def create_group(
     data: GroupCreate,
     svc: GroupService = Depends(get_group_service),
 ):
@@ -41,7 +41,7 @@ async def create_group(
 
 
 @router.put("/{group_id}")
-async def update_group(
+def update_group(
     group_id: int,
     data: GroupUpdate,
     svc: GroupService = Depends(get_group_service),
@@ -57,7 +57,7 @@ async def update_group(
 
 
 @router.delete("/{group_id}")
-async def delete_group(
+def delete_group(
     group_id: int, svc: GroupService = Depends(get_group_service)
 ):
     """删除分组"""
@@ -66,7 +66,7 @@ async def delete_group(
 
 
 @router.post("/{group_id}/accounts/{account_id}")
-async def add_account(
+def add_account(
     group_id: int,
     account_id: int,
     svc: GroupService = Depends(get_group_service),
@@ -80,7 +80,7 @@ async def add_account(
 
 
 @router.delete("/accounts/{account_id}")
-async def remove_account(
+def remove_account(
     account_id: int,
     svc: GroupService = Depends(get_group_service),
 ):
@@ -90,7 +90,7 @@ async def remove_account(
 
 
 @router.put("/{group_id}/main-account/{account_id}")
-async def set_main_account(
+def set_main_account(
     group_id: int,
     account_id: int,
     svc: GroupService = Depends(get_group_service),
@@ -111,7 +111,7 @@ class PoolAccountIds(BaseModel):
 
 
 @router.get("/{group_id}/pool")
-async def get_pool_accounts(
+def get_pool_accounts(
     group_id: int,
     svc: GroupService = Depends(get_group_service),
 ):
@@ -121,7 +121,7 @@ async def get_pool_accounts(
 
 
 @router.post("/{group_id}/pool")
-async def add_to_pool(
+def add_to_pool(
     group_id: int,
     data: PoolAccountIds,
     svc: GroupService = Depends(get_group_service),
@@ -132,7 +132,7 @@ async def add_to_pool(
 
 
 @router.delete("/{group_id}/pool")
-async def remove_from_pool(
+def remove_from_pool(
     group_id: int,
     data: PoolAccountIds,
     svc: GroupService = Depends(get_group_service),
@@ -146,7 +146,7 @@ async def remove_from_pool(
 
 
 @router.post("/pool/mark-unusable/{account_id}")
-async def mark_pool_unusable(
+def mark_pool_unusable(
     account_id: int,
     svc: GroupService = Depends(get_group_service),
 ):
@@ -157,7 +157,7 @@ async def mark_pool_unusable(
 
 
 @router.post("/pool/clear-status/{account_id}")
-async def clear_pool_status(
+def clear_pool_status(
     account_id: int,
     svc: GroupService = Depends(get_group_service),
 ):

@@ -14,15 +14,23 @@ class AccountService:
     def __init__(self, db: Session, crypto=None):
         self.db = db
 
-    def _to_dict(self, account: Account) -> Dict:
-        """ORM 对象转字典"""
+    def _to_dict(self, account: Account, *, _group_cache: dict = None) -> Dict:
+        """ORM 对象转字典
+
+        Args:
+            _group_cache: 外部传入的 {group_id: Group} 缓存，避免 N+1 查询。
+                          为 None 时回退到单次查询（兼容单条调用）。
+        """
         from models.orm import Group
 
         # 判断是否是家庭组管理员 + 成员数
         is_family_owner = False
         family_member_count = 0
         if account.family_group_id:
-            group = self.db.get(Group, account.family_group_id)
+            if _group_cache is not None:
+                group = _group_cache.get(account.family_group_id)
+            else:
+                group = self.db.get(Group, account.family_group_id)
             if group:
                 family_member_count = group.member_count or 0
                 if group.main_account_id == account.id:
@@ -105,7 +113,15 @@ class AccountService:
 
         total = query.count()
         rows = query.offset((page - 1) * page_size).limit(page_size).all()
-        return [self._to_dict(row) for row in rows], total
+
+        # 一次性查出所有相关 Group，避免 _to_dict 里 N+1 查询
+        group_ids = {r.family_group_id for r in rows if r.family_group_id}
+        group_cache: dict = {}
+        if group_ids:
+            groups = self.db.query(Group).filter(Group.id.in_(group_ids)).all()
+            group_cache = {g.id: g for g in groups}
+
+        return [self._to_dict(row, _group_cache=group_cache) for row in rows], total
 
     def get_available(self, search: str = "", limit: int = 200, pool_group_id: int = None) -> List[Dict]:
         """获取可邀请的账号：未在家庭组 + 未废弃/不可用 + 使用次数未满 + 当日有效

@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 from models.orm import Group, Account
 from services.account import AccountService
+from services.group_sync import clear_account_family_state
 from core.constants import FAMILY_MAX_MEMBERS, POOL_MAX_USE_COUNT, POOL_STATUS_RETIRED
 
 
@@ -29,7 +30,8 @@ class GroupService:
             "updated_at": group.updated_at.isoformat() if group.updated_at else None,
         }
 
-    def _ensure_main_account(self, accounts: List[Dict], main_id: int, group_id: int) -> List[Dict]:
+    def _ensure_main_account(self, accounts: List[Dict], main_id: int, group_id: int,
+                             *, _group_cache: dict = None) -> List[Dict]:
         """主号的 family_group_id 意外丢失时，自动修复并补入列表"""
         if not main_id or any(a["id"] == main_id for a in accounts):
             return accounts
@@ -37,22 +39,44 @@ class GroupService:
         if main_acc:
             main_acc.family_group_id = group_id
             self.db.commit()
-            accounts.insert(0, self.account_service._to_dict(main_acc))
+            accounts.insert(0, self.account_service._to_dict(main_acc, _group_cache=_group_cache))
         return accounts
 
     def get_all(self, search: str = "") -> List[Dict]:
+        # 一次查出所有分组 + 主号邮箱
         rows = (
             self.db.query(Group, Account.email)
             .outerjoin(Account, Group.main_account_id == Account.id)
             .order_by(Group.name)
             .all()
         )
+        group_ids = [group.id for group, _ in rows]
+
+        # 一次查出所有分组的成员，按 group_id 分组（消除 N+1）
+        all_members = (
+            self.db.query(Account)
+            .filter(Account.family_group_id.in_(group_ids))
+            .order_by(Account.email)
+            .all()
+        ) if group_ids else []
+
+        # 构建 group 缓存，供 _to_dict 内部使用（避免成员列表的 N+1）
+        group_cache = {group.id: group for group, _ in rows}
+
+        members_by_group: Dict[int, List[Dict]] = {}
+        for member in all_members:
+            gid = member.family_group_id
+            if gid not in members_by_group:
+                members_by_group[gid] = []
+            members_by_group[gid].append(self.account_service._to_dict(member, _group_cache=group_cache))
+
         result = []
         keyword = search.strip().lower()
         for group, email in rows:
             d = self._to_dict(group, email)
-            accounts = self.get_accounts(group.id)
-            d["accounts"] = self._ensure_main_account(accounts, group.main_account_id, group.id)
+            accounts = members_by_group.get(group.id, [])
+            d["accounts"] = self._ensure_main_account(accounts, group.main_account_id, group.id,
+                                                       _group_cache=group_cache)
             # 搜索过滤: 匹配分组名、主号邮箱或任意子号邮箱
             if keyword:
                 match = (
@@ -117,10 +141,9 @@ class GroupService:
     def delete(self, group_id: int):
         group = self.db.get(Group, group_id)
         if group:
-            # 先清除关联账号的 family_group_id
-            self.db.query(Account).filter(Account.family_group_id == group_id).update(
-                {"family_group_id": None}
-            )
+            members = self.db.query(Account).filter(Account.family_group_id == group_id).all()
+            for member in members:
+                clear_account_family_state(member)
             self.db.delete(group)
             self.db.commit()
 
@@ -131,15 +154,21 @@ class GroupService:
 
         account = self.db.query(Account).get(account_id)
         if account:
+            now = datetime.now(timezone.utc)
+            if account.family_group_id != group_id:
+                # 已在其他分组 → 先走退出逻辑
+                if account.family_group_id is not None:
+                    clear_account_family_state(account)
+                account.pool_use_count = (account.pool_use_count or 0) + 1
+                account.pool_last_used_at = now
             account.family_group_id = group_id
-            account.updated_at = datetime.now(timezone.utc)
+            account.updated_at = now
             self.db.commit()
 
     def remove_account(self, account_id: int):
         account = self.db.query(Account).get(account_id)
         if account:
-            account.family_group_id = None
-            account.updated_at = datetime.now(timezone.utc)
+            clear_account_family_state(account)
             self.db.commit()
 
     def set_main_account(self, group_id: int, account_id: int):

@@ -1,4 +1,6 @@
 """浏览器配置路由 - Profile CRUD + 启动/停止"""
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
@@ -40,6 +42,24 @@ def _to_dict(p: BrowserProfile, running_ids: list) -> dict:
     }
 
 
+# ── 固定路径路由（必须在参数路由 /{profile_id} 之前） ──
+
+
+@router.get("/storage/stats")
+async def get_storage_stats():
+    """获取浏览器 profile 存储统计"""
+    return await asyncio.to_thread(browser_manager.get_storage_stats)
+
+
+@router.post("/storage/clean")
+async def clean_all_caches():
+    """清理所有 profile 的 Chromium 缓存（保留 cookies/登录态）"""
+    return await asyncio.to_thread(browser_manager.clean_all_caches)
+
+
+# ── 集合路由 ──
+
+
 @router.get("")
 async def list_profiles(db: Session = Depends(get_db)):
     """获取所有浏览器配置"""
@@ -51,16 +71,6 @@ async def list_profiles(db: Session = Depends(get_db)):
     )
     running_ids = browser_manager.get_running_ids()
     return {"profiles": [_to_dict(p, running_ids) for p in profiles]}
-
-
-@router.get("/{profile_id}")
-async def get_profile(profile_id: int, db: Session = Depends(get_db)):
-    """获取单个浏览器配置"""
-    p = db.query(BrowserProfile).get(profile_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="配置不存在")
-    running_ids = browser_manager.get_running_ids()
-    return _to_dict(p, running_ids)
 
 
 @router.post("", status_code=201)
@@ -76,6 +86,19 @@ async def create_profile(data: BrowserProfileCreate, db: Session = Depends(get_d
     db.commit()
     db.refresh(profile)
     return {"id": profile.id, "message": "配置创建成功"}
+
+
+# ── 参数路由 /{profile_id} ──
+
+
+@router.get("/{profile_id}")
+async def get_profile(profile_id: int, db: Session = Depends(get_db)):
+    """获取单个浏览器配置"""
+    p = db.query(BrowserProfile).get(profile_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="配置不存在")
+    running_ids = browser_manager.get_running_ids()
+    return _to_dict(p, running_ids)
 
 
 @router.put("/{profile_id}")

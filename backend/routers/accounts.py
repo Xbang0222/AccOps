@@ -12,7 +12,7 @@ router = APIRouter(prefix="/accounts", tags=["账号"], dependencies=[Depends(ve
 
 
 @router.get("")
-async def list_accounts(
+def list_accounts(
     search: str = "",
     group: str = "",
     tag: str = "",
@@ -31,19 +31,19 @@ async def list_accounts(
 
 
 @router.get("/groups")
-async def list_groups(svc: AccountService = Depends(get_account_service)):
+def list_groups(svc: AccountService = Depends(get_account_service)):
     """获取所有分组"""
     return {"groups": svc.get_all_groups()}
 
 
 @router.get("/tags")
-async def list_tags(svc: AccountService = Depends(get_account_service)):
+def list_tags(svc: AccountService = Depends(get_account_service)):
     """获取所有标签"""
     return {"tags": svc.get_all_tags()}
 
 
 @router.get("/available")
-async def list_available_accounts(
+def list_available_accounts(
     search: str = "",
     svc: AccountService = Depends(get_account_service),
 ):
@@ -53,7 +53,7 @@ async def list_available_accounts(
 
 
 @router.get("/{account_id}")
-async def get_account(account_id: int, svc: AccountService = Depends(get_account_service)):
+def get_account(account_id: int, svc: AccountService = Depends(get_account_service)):
     """获取单个账号"""
     account = svc.get_by_id(account_id)
     if not account:
@@ -62,7 +62,7 @@ async def get_account(account_id: int, svc: AccountService = Depends(get_account
 
 
 @router.post("", status_code=201)
-async def create_account(
+def create_account(
     data: AccountCreate,
     svc: AccountService = Depends(get_account_service),
 ):
@@ -81,7 +81,7 @@ async def create_account(
 
 
 @router.post("/import", status_code=201)
-async def import_accounts(
+def import_accounts(
     data: AccountImportRequest,
     svc: AccountService = Depends(get_account_service),
 ):
@@ -147,7 +147,7 @@ async def import_accounts(
 
 
 @router.put("/{account_id}")
-async def update_account(
+def update_account(
     account_id: int,
     data: AccountUpdate,
     svc: AccountService = Depends(get_account_service),
@@ -168,14 +168,14 @@ async def update_account(
 
 
 @router.delete("/{account_id}")
-async def delete_account(account_id: int, svc: AccountService = Depends(get_account_service)):
+def delete_account(account_id: int, svc: AccountService = Depends(get_account_service)):
     """删除账号"""
     svc.delete(account_id)
     return {"message": "账号删除成功"}
 
 
 @router.get("/{account_id}/totp")
-async def get_totp_code(account_id: int, svc: AccountService = Depends(get_account_service)):
+def get_totp_code(account_id: int, svc: AccountService = Depends(get_account_service)):
     """获取账号的 TOTP 验证码"""
     account = svc.get_by_id(account_id)
     if not account:

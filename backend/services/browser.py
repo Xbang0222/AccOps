@@ -246,6 +246,176 @@ class BrowserManager:
             del mapping[key]
             mapping_file.write_text(json.dumps(mapping, indent=2))
 
+    # ── 存储分析与清理 ────────────────────────────────────
+
+    # 这些 Chromium 子目录是缓存/模型数据，清掉不影响 cookies 和登录态
+    # 顶层缓存目录
+    CLEANABLE_SUBDIRS: List[str] = [
+        "optimization_guide_model_store",
+        "component_crx_cache",
+        "WasmTtsEngine",
+        "Safe Browsing",
+        "GraphiteDawnCache",
+        "ShaderCache",
+        "GrShaderCache",
+        "DawnGraphiteCache",
+        "SSLErrorAssistant",
+        "ZxcvbnData",
+        "CertificateRevocation",
+        "PKIMetadata",
+        "OriginTrials",
+        "OptimizationHints",
+        "SafetyTips",
+        "TrustTokenKeyCommitments",
+        "PrivacySandboxAttestationsPreloaded",
+        "RecoveryImproved",
+        "segmentation_platform",
+        "Subresource Filter",
+        "ActorSafetyLists",
+        "WidevineCdm",
+    ]
+    # Default/ 下的缓存子目录（不含 Cookies、Local Storage 等登录态数据）
+    # 注意: DawnGraphiteCache/GrShaderCache/ShaderCache 与顶层同名但路径不同，
+    # Chromium 在顶层和 Default/ 下各维护一份，需分别清理
+    CLEANABLE_DEFAULT_SUBDIRS: List[str] = [
+        "Cache",
+        "Code Cache",
+        "Service Worker",
+        "GPUCache",
+        "DawnWebGPUCache",
+        "DawnGraphiteCache",
+        "GrShaderCache",
+        "ShaderCache",
+        "blob_storage",
+        "File System",
+    ]
+
+    @staticmethod
+    def _dir_size_bytes(path: Path) -> int:
+        """递归计算目录大小（字节）"""
+        total = 0
+        try:
+            for entry in path.rglob("*"):
+                if entry.is_file():
+                    try:
+                        total += entry.stat().st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        return total
+
+    def _iter_cleanable_dirs(self, profile_dir: Path):
+        """枚举一个 profile 下所有可清理的缓存目录"""
+        # 顶层缓存目录
+        for name in self.CLEANABLE_SUBDIRS:
+            subdir = profile_dir / name
+            if subdir.exists():
+                yield subdir
+        # Default/ 下的缓存子目录
+        default_dir = profile_dir / "Default"
+        if default_dir.exists():
+            for name in self.CLEANABLE_DEFAULT_SUBDIRS:
+                subdir = default_dir / name
+                if subdir.exists():
+                    yield subdir
+
+    def get_storage_stats(self) -> dict:
+        """获取浏览器 profile 存储统计"""
+        if not PROFILES_DIR.exists():
+            return {"total_bytes": 0, "profile_count": 0, "cleanable_bytes": 0, "profiles": []}
+
+        mapping_file = PROFILES_DIR / ".mapping.json"
+        mapping: dict = {}
+        if mapping_file.exists():
+            try:
+                mapping = json.loads(mapping_file.read_text())
+            except Exception:
+                pass
+
+        # 反转 mapping: dir_name -> profile_id
+        dir_to_pid = {v: k for k, v in mapping.items()}
+
+        total_bytes = 0
+        cleanable_bytes = 0
+        profiles_info: List[dict] = []
+
+        for child in sorted(PROFILES_DIR.iterdir()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            size = self._dir_size_bytes(child)
+            total_bytes += size
+
+            # 计算可清理缓存大小
+            cache_size = sum(self._dir_size_bytes(d) for d in self._iter_cleanable_dirs(child))
+            cleanable_bytes += cache_size
+
+            pid = dir_to_pid.get(child.name)
+            profiles_info.append({
+                "dir_name": child.name,
+                "profile_id": int(pid) if pid else None,
+                "total_bytes": size,
+                "cache_bytes": cache_size,
+            })
+
+        # 按大小降序
+        profiles_info.sort(key=lambda p: p["total_bytes"], reverse=True)
+
+        return {
+            "total_bytes": total_bytes,
+            "profile_count": len(profiles_info),
+            "cleanable_bytes": cleanable_bytes,
+            "profiles": profiles_info,
+        }
+
+    def clean_all_caches(self) -> dict:
+        """清理所有 profile 的 Chromium 缓存子目录（保留 cookies/登录态）"""
+        running_ids = set(self._instances.keys())
+        mapping_file = PROFILES_DIR / ".mapping.json"
+        mapping: dict = {}
+        if mapping_file.exists():
+            try:
+                mapping = json.loads(mapping_file.read_text())
+            except Exception:
+                pass
+
+        # 运行中的 profile 对应的目录名
+        running_dirs: set = set()
+        for pid in running_ids:
+            dir_name = mapping.get(str(pid))
+            if dir_name:
+                running_dirs.add(dir_name)
+
+        freed_bytes = 0
+        cleaned_count = 0
+        skipped_running = 0
+
+        for child in PROFILES_DIR.iterdir():
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+
+            if child.name in running_dirs:
+                skipped_running += 1
+                continue
+
+            for subdir in self._iter_cleanable_dirs(child):
+                size = self._dir_size_bytes(subdir)
+                try:
+                    shutil.rmtree(subdir)
+                    freed_bytes += size
+                except OSError as e:
+                    logger.warning(f"清理 {subdir} 失败: {e}")
+
+            cleaned_count += 1
+
+        logger.info(f"缓存清理完成: 清理 {cleaned_count} 个 profile, 释放 {freed_bytes / 1024 / 1024:.1f} MB")
+
+        return {
+            "cleaned_count": cleaned_count,
+            "freed_bytes": freed_bytes,
+            "skipped_running": skipped_running,
+        }
+
 
 # 全局单例
 browser_manager = BrowserManager()

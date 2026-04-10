@@ -80,7 +80,7 @@ def sync_group_from_discover(
                 return
 
             if not discover_result.has_group:
-                _clear_account_family_state(account)
+                clear_account_family_state(account)
                 if account.family_group_id:
                     logger.info("[discover_sync] %s 已不在家庭组, 清除分组关系", account.email)
                 else:
@@ -183,7 +183,7 @@ def _sync_removed_member(db: Session, extra: dict) -> None:
         return
 
     old_group_id = member.family_group_id
-    _clear_account_family_state(member)
+    clear_account_family_state(member)
     logger.info("[sync_group] 已将 %s 从分组 #%s 中移除", member_email, old_group_id)
 
 
@@ -199,12 +199,12 @@ def _sync_left_group(db: Session, account: Account) -> None:
     if group.main_account_id == account.id:
         members = db.query(Account).filter(Account.family_group_id == group_id).all()
         for member in members:
-            _clear_account_family_state(member)
+            clear_account_family_state(member)
         db.delete(group)
         logger.info("[sync_group] 管理员 %s 删除了分组 #%s", account.email, group_id)
         return
 
-    _clear_account_family_state(account)
+    clear_account_family_state(account)
     logger.info("[sync_group] 成员 %s 退出了分组 #%s", account.email, group_id)
 
 
@@ -270,8 +270,13 @@ def _sync_member_discover(db: Session, account: Account, discover_result) -> Non
             if email_prefix in manager_name_lower or manager_name_lower in candidate.email.lower():
                 group = db.query(Group).filter(Group.id == candidate.family_group_id).first()
                 if group and group.main_account_id == candidate.id:
+                    now = datetime.now(timezone.utc)
                     account.family_group_id = group.id
-                    account.updated_at = datetime.now(timezone.utc)
+                    # 之前没记录 → 补记录使用
+                    if not account.pool_last_used_at:
+                        account.pool_use_count = (account.pool_use_count or 0) + 1
+                        account.pool_last_used_at = now
+                    account.updated_at = now
                     logger.info("[discover_sync] 成员 %s 加入管理员 %s 的分组 #%s", account.email, candidate.email, group.id)
                     return
 
@@ -292,7 +297,7 @@ def _sync_members_from_discover(db: Session, group_id: int, members: list[dict])
             if old_account.email.lower() in discovered_emails:
                 continue
             logger.info("[discover_sync] 成员 %s 不在 discover 结果中, 从分组 #%s 移除", old_account.email, group_id)
-            _clear_account_family_state(old_account)
+            clear_account_family_state(old_account)
 
         for member in members:
             if member.get("role") == "manager":
@@ -321,27 +326,40 @@ def _clear_pending_flag(db: Session, email: str) -> None:
 
 
 def _upsert_discovered_member(db: Session, group_id: int, email: str, is_pending: bool) -> None:
+    now = datetime.now(timezone.utc)
     account = db.query(Account).filter(Account.email.ilike(email)).first()
     if not account:
         account = Account(email=email, family_group_id=group_id, is_family_pending=is_pending)
+        # 非 pending 的新成员 → 记录使用
+        if not is_pending:
+            account.pool_use_count = 1
+            account.pool_last_used_at = now
         db.add(account)
         logger.info("[discover_sync] 新建成员账号 %s 并关联到分组 #%s", email, group_id)
         return
 
     changed = False
+    newly_joined = False
     if account.family_group_id != group_id:
+        newly_joined = account.family_group_id is None
         account.family_group_id = group_id
         changed = True
     if account.is_family_pending != is_pending:
         account.is_family_pending = is_pending
         changed = True
 
+    # 首次加入分组且非 pending、之前没记录 → 补记录使用
+    if newly_joined and not is_pending and not account.pool_last_used_at:
+        account.pool_use_count = (account.pool_use_count or 0) + 1
+        account.pool_last_used_at = now
+        changed = True
+
     if changed:
-        account.updated_at = datetime.now(timezone.utc)
+        account.updated_at = now
         logger.info("[discover_sync] 已有关联成员 %s 更新到分组 #%s", account.email, group_id)
 
 
-def _clear_account_family_state(account: Account) -> None:
+def clear_account_family_state(account: Account) -> None:
     now = datetime.now(timezone.utc)
     # 只有实际加入过家庭组的账号（非 pending）才标记退出时间 + 自动入池
     if account.family_group_id and not account.is_family_pending:
@@ -360,6 +378,11 @@ def _clear_account_family_state(account: Account) -> None:
             if last_used_date < today_beijing:
                 account.pool_status = POOL_STATUS_RETIRED
                 account.pool_group_id = None
+        else:
+            # pool_last_used_at 未记录（历史数据等极端情况）
+            # 无法判断当天可复用，保守标记为废弃
+            account.pool_status = POOL_STATUS_RETIRED
+            account.pool_group_id = None
 
         # 用完 2 次 → 标记废弃 + 移出号池
         if use_count >= POOL_MAX_USE_COUNT:
