@@ -22,19 +22,6 @@ import { maskEmail } from '@/utils/mask'
 
 const { Text } = Typography
 
-const TAG_COLORS = [
-  'blue', 'purple', 'cyan', 'geekblue', 'magenta', 'volcano', 'gold', 'green',
-]
-
-const tagColorMap = new Map<string, string>()
-
-function getTagColor(tag: string) {
-  if (!tagColorMap.has(tag)) {
-    tagColorMap.set(tag, TAG_COLORS[tagColorMap.size % TAG_COLORS.length])
-  }
-  return tagColorMap.get(tag)!
-}
-
 interface CreateAccountTableColumnsOptions {
   browserLoading: Set<number>
   browserRunning: Set<number>
@@ -123,22 +110,6 @@ export function createAccountTableColumns({
         }
         return <Tag color="blue" style={{ margin: 0, fontSize: 11 }}><UserOutlined style={{ marginRight: 2 }} />成员</Tag>
       },
-    },
-    {
-      title: '标签',
-      dataIndex: 'tags',
-      key: 'tags',
-      width: 140,
-      render: (tags: string | null) =>
-        tags ? (
-          <Flex gap={4} wrap>
-            {tags.split(',').map((tag, index) => (
-              <Tag key={`${tag}-${index}`} color={getTagColor(tag.trim())} style={{ margin: 0, fontSize: 11 }}>
-                {tag.trim()}
-              </Tag>
-            ))}
-          </Flex>
-        ) : null,
     },
     {
       title: '备注',

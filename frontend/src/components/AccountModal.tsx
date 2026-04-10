@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Divider, Form, Input, Modal, Select, message } from 'antd';
+import { Divider, Form, Input, Modal, message } from 'antd';
 import {
   MailOutlined,
   LockOutlined,
@@ -9,7 +9,6 @@ import {
 import {
   createAccount,
   updateAccount,
-  getTags,
 } from '@/api';
 import type { Account } from '@/types';
 import { getErrorMessage } from '@/utils/http';
@@ -31,41 +30,23 @@ const AccountModal: React.FC<AccountModalProps> = ({
 }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [allTags, setAllTags] = useState<string[]>([]);
 
   useEffect(() => {
     if (visible) {
-      loadTags();
       if (account) {
-        const formValues = {
-          ...account,
-          tags: account.tags ? account.tags.split(',').map((t) => t.trim()) : [],
-        };
-        form.setFieldsValue(formValues);
+        form.setFieldsValue(account);
       } else {
         form.resetFields();
       }
     }
   }, [account, form, visible]);
 
-  const loadTags = async () => {
-    try {
-      const { data } = await getTags();
-      setAllTags(data.tags);
-    } catch (error) {
-      console.error('加载标签失败:', error);
-    }
-  };
-
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       setLoading(true);
 
-      const submitValues = {
-        ...values,
-        tags: Array.isArray(values.tags) ? values.tags.join(', ') : values.tags || '',
-      };
+      const submitValues = { ...values };
 
       if (account) {
         // 保留原有的 family_group_id，避免编辑账号时把分组关联清掉
@@ -145,16 +126,6 @@ const AccountModal: React.FC<AccountModalProps> = ({
           <Input
             prefix={<FolderOutlined style={{ color: '#bfbfbf' }} />}
             placeholder="如: 工作、个人"
-          />
-        </Form.Item>
-
-        <Form.Item name="tags" label="标签">
-          <Select
-            mode="tags"
-            style={{ width: '100%' }}
-            placeholder="选择或输入标签，按回车添加"
-            tokenSeparators={[',']}
-            options={allTags.map((tag) => ({ label: tag, value: tag }))}
           />
         </Form.Item>
 

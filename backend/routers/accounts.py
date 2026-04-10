@@ -15,7 +15,6 @@ router = APIRouter(prefix="/accounts", tags=["账号"], dependencies=[Depends(ve
 def list_accounts(
     search: str = "",
     group: str = "",
-    tag: str = "",
     page: int = 1,
     page_size: int = 20,
     owner_only: bool = False,
@@ -25,7 +24,7 @@ def list_accounts(
 ):
     """获取账号列表（支持搜索/筛选/分页/排序）"""
     accounts, total = svc.get_all(
-        search, group, tag, page, page_size, owner_only, sort_by, sort_order,
+        search, group, page, page_size, owner_only, sort_by, sort_order,
     )
     return {"accounts": accounts, "total": total, "page": page, "page_size": page_size}
 
@@ -34,12 +33,6 @@ def list_accounts(
 def list_groups(svc: AccountService = Depends(get_account_service)):
     """获取所有分组"""
     return {"groups": svc.get_all_groups()}
-
-
-@router.get("/tags")
-def list_tags(svc: AccountService = Depends(get_account_service)):
-    """获取所有标签"""
-    return {"tags": svc.get_all_tags()}
 
 
 @router.get("/available")
@@ -72,7 +65,6 @@ def create_account(
         password=data.password,
         recovery_email=data.recovery_email,
         totp_secret=data.totp_secret,
-        tags=data.tags,
         group_name=data.group_name,
         family_group_id=data.group_id,
         notes=data.notes,
@@ -108,7 +100,6 @@ def import_accounts(
         try:
             parsed = parse_account_import_line(
                 line,
-                default_tags=data.tags or "",
                 default_group_name=data.group_name or "",
                 default_notes=data.notes or "",
             )
@@ -130,7 +121,6 @@ def import_accounts(
                 password=parsed.password,
                 recovery_email=parsed.recovery_email,
                 totp_secret=parsed.totp_secret,
-                tags=parsed.tags,
                 group_name=parsed.group_name,
                 notes=parsed.notes,
             )
@@ -159,7 +149,6 @@ def update_account(
         password=data.password,
         recovery_email=data.recovery_email,
         totp_secret=data.totp_secret,
-        tags=data.tags,
         group_name=data.group_name,
         family_group_id=data.group_id,
         notes=data.notes,

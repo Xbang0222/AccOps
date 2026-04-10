@@ -26,16 +26,6 @@ async def get_stats(db: Session = Depends(get_db)):
         Account.family_group_id.isnot(None)
     ).scalar() or 0
 
-    # 标签统计
-    tag_rows = db.query(Account.tags).filter(Account.tags != "", Account.tags.isnot(None)).all()
-    tag_counts: dict[str, int] = {}
-    for (tags_str,) in tag_rows:
-        for tag in tags_str.split(","):
-            tag = tag.strip()
-            if tag:
-                tag_counts[tag] = tag_counts.get(tag, 0) + 1
-    top_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-
     # 最近更新的账号
     recent = (
         db.query(Account.id, Account.email, Account.updated_at)
@@ -54,6 +44,5 @@ async def get_stats(db: Session = Depends(get_db)):
         "with_2fa": with_2fa,
         "without_2fa": without_2fa,
         "with_group": with_group,
-        "top_tags": [{"tag": t, "count": c} for t, c in top_tags],
         "recent_accounts": recent_accounts,
     }

@@ -3,24 +3,19 @@ import {
   Card,
   Statistic,
   Typography,
-  Tag,
   List,
   message,
   Flex,
-  Progress,
 } from 'antd';
 import {
   ContactsOutlined,
   TeamOutlined,
-  TagOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
 import { getDashboardStats } from '@/api';
 import type { DashboardStats } from '@/api/dashboard';
 
 const { Text } = Typography;
-
-const TAG_COLORS = ['blue', 'purple', 'cyan', 'geekblue', 'magenta', 'volcano', 'gold', 'green'];
 
 const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -74,42 +69,6 @@ const DashboardPage: React.FC = () => {
       </Flex>
 
       <Flex gap={16} wrap>
-
-        {/* 标签分布 */}
-        <Card
-          title={
-            <Flex align="center" gap={8}>
-              <TagOutlined style={{ color: '#9254de' }} />
-              <span>标签分布</span>
-            </Flex>
-          }
-          loading={loading}
-          style={{ flex: 1, minWidth: 300 }}
-        >
-          {stats?.top_tags && stats.top_tags.length > 0 ? (
-            <Flex vertical gap={10}>
-              {stats.top_tags.map((item, i) => (
-                <Flex key={item.tag} justify="space-between" align="center">
-                  <Tag color={TAG_COLORS[i % TAG_COLORS.length]}>{item.tag}</Tag>
-                  <Flex align="center" gap={8} style={{ flex: 1, marginLeft: 12 }}>
-                    <Progress
-                      percent={Math.round((item.count / stats.total_accounts) * 100)}
-                      size="small"
-                      showInfo={false}
-                      strokeColor={TAG_COLORS[i % TAG_COLORS.length]}
-                      style={{ flex: 1 }}
-                    />
-                    <Text type="secondary" style={{ fontSize: 12, width: 30, textAlign: 'right' }}>
-                      {item.count}
-                    </Text>
-                  </Flex>
-                </Flex>
-              ))}
-            </Flex>
-          ) : (
-            <Text type="secondary">暂无标签数据</Text>
-          )}
-        </Card>
 
         {/* 最近更新 */}
         <Card

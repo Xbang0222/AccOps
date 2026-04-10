@@ -26,7 +26,6 @@ class AccountBase(BaseModel):
     password: Optional[str] = ""
     recovery_email: Optional[str] = ""
     totp_secret: Optional[str] = ""
-    tags: Optional[str] = ""
     group_name: Optional[str] = ""
     group_id: Optional[int] = None
     notes: Optional[str] = ""
@@ -47,7 +46,6 @@ class AccountImportRequest(BaseModel):
     每行一个账号, 用 ---- 分隔字段
     """
     text: str
-    tags: Optional[str] = ""
     group_name: Optional[str] = ""
     notes: Optional[str] = ""
 

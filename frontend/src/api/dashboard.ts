@@ -7,7 +7,6 @@ export interface DashboardStats {
   with_2fa: number;
   without_2fa: number;
   with_group: number;
-  top_tags: { tag: string; count: number }[];
   recent_accounts: { id: number; email: string; updated_at: string | null }[];
 }
 

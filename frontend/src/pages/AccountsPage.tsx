@@ -26,7 +26,6 @@ import {
   getAccounts,
   deleteAccount,
   getGroups,
-  getTags,
   importAccounts,
   getBrowserProfiles,
   createBrowserProfile,
@@ -59,9 +58,7 @@ const AccountsPage: React.FC = () => {
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [searchText, setSearchText] = useState('');
   const [groupFilter, setGroupFilter] = useState<string | undefined>();
-  const [tagFilter, setTagFilter] = useState<string | undefined>();
   const [groups, setGroups] = useState<string[]>([]);
-  const [tags, setTags] = useState<string[]>([]);
   const [masked, setMasked] = useState(false);
   const [ownerOnly, setOwnerOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -95,7 +92,6 @@ const AccountsPage: React.FC = () => {
       const { data } = await getAccounts({
         search: searchText,
         group: groupFilter,
-        tag: tagFilter,
         page: currentPage,
         pageSize,
         ownerOnly,
@@ -109,13 +105,12 @@ const AccountsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, groupFilter, msg, ownerOnly, pageSize, searchText, sortField, sortOrder, tagFilter]);
+  }, [currentPage, groupFilter, msg, ownerOnly, pageSize, searchText, sortField, sortOrder]);
 
   const loadFilters = useCallback(async () => {
     try {
-      const [groupsRes, tagsRes] = await Promise.all([getGroups(), getTags()]);
+      const groupsRes = await getGroups();
       setGroups(groupsRes.data.groups);
-      setTags(tagsRes.data.tags);
     } catch { /* silent */ }
   }, []);
 
@@ -327,11 +322,6 @@ const AccountsPage: React.FC = () => {
             placeholder="分组" style={{ width: 140 }}
             onChange={(v) => { setGroupFilter(v); setCurrentPage(1); }}
             allowClear options={groups.map((g) => ({ label: g, value: g }))}
-          />
-          <Select
-            placeholder="标签" style={{ width: 140 }}
-            onChange={(v) => { setTagFilter(v); setCurrentPage(1); }}
-            allowClear options={tags.map((t) => ({ label: t, value: t }))}
           />
         </Flex>
         <Flex gap={8} align="center">

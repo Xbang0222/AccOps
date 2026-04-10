@@ -42,7 +42,6 @@ class AccountService:
             "password": account.password or "",
             "recovery_email": account.recovery_email or "",
             "totp_secret": account.totp_secret or "",
-            "tags": account.tags or "",
             "group_name": account.group_name or "",
             "family_group_id": account.family_group_id,
             "pool_group_id": account.pool_group_id,
@@ -76,7 +75,7 @@ class AccountService:
     SORTABLE_FIELDS = {"email", "created_at", "updated_at", "group_name"}
 
     def get_all(
-        self, search: str = "", group_filter: str = "", tag_filter: str = "",
+        self, search: str = "", group_filter: str = "",
         page: int = 1, page_size: int = 20, owner_only: bool = False,
         sort_by: str = "created_at", sort_order: str = "desc",
     ) -> tuple[List[Dict], int]:
@@ -89,8 +88,6 @@ class AccountService:
             query = query.filter(Account.email.ilike(like) | Account.notes.ilike(like))
         if group_filter:
             query = query.filter(Account.group_name == group_filter)
-        if tag_filter:
-            query = query.filter(Account.tags.ilike(f"%{tag_filter}%"))
         if owner_only:
             # 仅显示家庭组创建者 (main_account_id 指向自己的账号)
             query = query.filter(
@@ -170,7 +167,6 @@ class AccountService:
         password: str = "",
         recovery_email: str = "",
         totp_secret: str = "",
-        tags: str = "",
         group_name: str = "",
         family_group_id: int = None,
         notes: str = "",
@@ -180,7 +176,6 @@ class AccountService:
             password=password,
             recovery_email=recovery_email,
             totp_secret=totp_secret,
-            tags=tags,
             group_name=group_name,
             family_group_id=family_group_id,
             notes=notes,
@@ -197,7 +192,6 @@ class AccountService:
         password: str = "",
         recovery_email: str = "",
         totp_secret: str = "",
-        tags: str = "",
         group_name: str = "",
         family_group_id: int = None,
         notes: str = "",
@@ -210,7 +204,6 @@ class AccountService:
         account.password = password
         account.recovery_email = recovery_email
         account.totp_secret = totp_secret
-        account.tags = tags
         account.group_name = group_name
         # 仅在显式传入时更新，避免编辑账号时意外清空分组关联
         if family_group_id is not None:
@@ -235,14 +228,3 @@ class AccountService:
             .all()
         )
         return [r[0] for r in rows]
-
-    def get_all_tags(self) -> List[str]:
-        rows = (
-            self.db.query(Account.tags)
-            .filter(Account.tags != "")
-            .all()
-        )
-        all_tags = set()
-        for (tags_str,) in rows:
-            all_tags.update(t.strip() for t in tags_str.split(",") if t.strip())
-        return sorted(all_tags)

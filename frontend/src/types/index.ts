@@ -6,7 +6,6 @@ export interface Account {
   password: string;
   recovery_email?: string;
   totp_secret?: string;
-  tags?: string;
   group_name?: string;
   group_id?: number;
   family_group_id?: number;

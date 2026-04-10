@@ -56,7 +56,6 @@ class Account(Base):
     password = Column(Text, default="")
     recovery_email = Column(Text, default="")
     totp_secret = Column(Text, default="")
-    tags = Column(Text, default="")
     group_name = Column(String, default="")
     family_group_id = Column(Integer, ForeignKey("family_groups.id", ondelete="SET NULL"), nullable=True)
     pool_group_id = Column(Integer, ForeignKey("family_groups.id", ondelete="SET NULL"), nullable=True)  # 所属号池（哪个主号的备用号）
