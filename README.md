@@ -30,13 +30,15 @@
 ### 分组与号池管理
 - 主号 + 子号分组体系，卡片列表 + 实时日志面板
 - **号池管理** — 每个主号独立的备用号池，互不干扰
-- **一键轮换** — 批量移除旧子号 → 从号池自动选取 → 邀请 → Cookies RPC 接受 → Discover 验证
+- **统一换号** — 一键移除旧子号 → 号池自动选取/手动指定 → 邀请 → Cookies RPC 接受 → Discover 全量同步
+- **两种模式** — 号池自动选取（指定数量）或手动指定邮箱
 - **当日复用** — 子号同一天内可反复轮换使用，次日进入冷却期
 - **批量登录** — 一键登录号池中所有无 Cookies 的账号
 
 ### 家庭组自动化
-- 创建/删除家庭组、发送/接受邀请、移除/替换成员
+- 创建/删除家庭组、发送/接受邀请、移除成员
 - 批量邀请 + 批量移除，支持多账号并行操作
+- 统一换号操作（合并了替换/轮换/一键换号）
 - 同步状态（Discover），订阅状态自动传播
 - 邀请时可搜索下拉选择账号（仅显示可用号）
 
@@ -54,9 +56,10 @@
 ### 其他
 - **并行操作** — 多个账号可同时执行自动化任务，互不干扰
 - **实时反馈** — WebSocket 推送步骤进度，调试模式下截图 + 页面源码
+- **错误边界** — 页面渲染错误优雅降级，不会白屏
 - **暗黑模式** — 三段式主题切换（跟随系统 / 浅色 / 深色）
 - **可拖拽列宽** — 账号表格支持 Excel 风格列宽调整
-- **数据安全** — 所有敏感字段 AES-256-GCM 加密存储
+- **浏览器缓存管理** — 可视化缓存占用，一键清理释放空间
 
 ## Tech Stack
 
@@ -175,15 +178,15 @@ cp backend/.env.example backend/.env
 - **并行友好** — WebSocket 连接池，每个账号独立管理，互不干扰
 - **号池隔离** — 每个主号独立号池，轮换操作不跨池
 
-### 轮换工作流
+### 换号工作流
 
 ```
-号池添加备用号 → 批量登录(保存cookies) → 轮换
-                                         ├── 阶段1: 移除旧子号 (rapt + RPC)
-                                         ├── 阶段2: 从号池选取新子号
+号池添加备用号 → 批量登录(保存cookies) → 换号
+                                         ├── 阶段1: 移除旧子号 (rapt + RPC 批量)
+                                         ├── 阶段2: 选取新子号 (号池自动/手动指定)
                                          ├── 阶段3: 批量邀请 (RPC)
-                                         ├── 阶段4: Cookies RPC 接受邀请
-                                         └── 阶段5: Discover 验证实际成员
+                                         ├── 阶段4: 登录子号 + Cookies RPC 接受
+                                         └── 阶段5: Discover 全量同步 (与同步按钮一致)
 ```
 
 ### 自动化函数
@@ -197,6 +200,7 @@ cp backend/.env.example backend/.env
 | `remove_family_member_sync` | 移除家庭组成员 | rapt + RPC |
 | `leave_family_group_sync` | 退出/删除家庭组 | rapt + RPC |
 | `discover_family_by_cookies` | 发现家庭组关系 | httpx + 自动回退 |
+| `_handle_family_swap` | 统一换号 (移除→选号→邀请→接受→同步) | RPC + DrissionPage |
 | `oauth_sync` | OAuth 授权 + API 探测 | DrissionPage + httpx |
 | `auto_phone_verify_sync` | 自动手机号验证 | DrissionPage + SMS API |
 
@@ -213,12 +217,16 @@ backend/
 ├── routers/
 │   ├── accounts.py             # 账号管理 (CRUD + 排序 + 可用号查询)
 │   ├── groups.py               # 分组管理 (CRUD + 号池管理)
-│   ├── automation.py           # 自动化 (WebSocket + 轮换 + 批量登录)
-│   ├── browser.py              # 浏览器配置
+│   ├── automation.py           # 自动化 REST API (登录/家庭组操作)
+│   ├── automation_ws.py        # 自动化 WebSocket (实时步骤推送)
+│   ├── automation_swap.py      # 统一换号 (移除→选号→邀请→接受→同步)
+│   ├── automation_helpers.py   # WebSocket 基础设施 (步骤队列/任务轮询)
+│   ├── browser.py              # 浏览器配置 + 缓存管理
 │   ├── sms.py                  # 接码管理
 │   └── settings.py             # 系统设置
 ├── services/
-│   ├── automation.py           # 自动化核心逻辑
+│   ├── automation.py           # 自动化核心逻辑 (StepTracker + 自动化函数)
+│   ├── automation_utils.py     # 自动化共享工具 (cookies保存/订阅同步)
 │   ├── browser.py              # DrissionPage 浏览器管理
 │   ├── family_api.py           # Google Family batchexecute RPC
 │   ├── group_sync.py           # 家庭组与本地分组同步
@@ -230,10 +238,15 @@ backend/
 frontend/src/
 ├── api/                        # Axios 客户端 + API 封装
 ├── features/
-│   ├── automation/             # 自动化操作定义
-│   ├── group-detail/           # 分组详情 (卡片 + 日志 + 操作弹窗)
+│   ├── automation/             # 自动化操作定义与展示
+│   ├── group-detail/           # 分组详情 (卡片 + 日志 + 换号操作)
+│   ├── settings/               # 系统设置组件 (StorageStatsCard)
 │   └── browser/                # 浏览器配置
 ├── pages/                      # 页面 (账号/分组/接码/设置)
+├── components/
+│   ├── ErrorBoundary.tsx       # 错误边界 (渲染错误优雅降级)
+│   ├── AccountModal.tsx        # 账号编辑弹窗
+│   └── ResizableTitle.tsx      # 可拖拽列宽表头
 ├── hooks/
 │   ├── useAutomationWs.ts      # WebSocket 多连接管理
 │   └── useThemeMode.tsx        # 主题模式
