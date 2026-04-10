@@ -6,7 +6,7 @@ export interface AutomationOperationField {
 }
 
 export interface AutomationOperationDefinition {
-  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'replace' | 'family-rotate' | 'pool-batch-login' | 'pool-replace-all'
+  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'family-swap' | 'pool-batch-login'
   label: string
   color: string
   needBrowser: boolean
@@ -69,31 +69,9 @@ export const FAMILY_AUTOMATION_OPERATIONS: AutomationOperationDefinition[] = [
     role: 'member',
   },
   {
-    key: 'replace',
-    label: '替换',
-    color: '#722ed1',
-    needBrowser: true,
-    fields: [
-      { name: 'old_email', placeholder: '旧成员邮箱 (将被移除)' },
-      { name: 'new_email', placeholder: '新成员邮箱 (将被邀请)' },
-    ],
-    role: 'owner',
-  },
-  {
-    key: 'family-rotate',
-    label: '轮换',
+    key: 'family-swap',
+    label: '换号',
     color: '#eb2f96',
-    needBrowser: true,
-    fields: [
-      { name: 'remove_emails', placeholder: '要移除的子号（逗号分隔）' },
-      { name: 'new_count', placeholder: '新子号数量' },
-    ],
-    role: 'owner',
-  },
-  {
-    key: 'pool-replace-all',
-    label: '一键换号',
-    color: '#f5222d',
     needBrowser: false,
     danger: true,
     role: 'owner',

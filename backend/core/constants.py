@@ -194,11 +194,9 @@ ACTION_FAMILY_LEAVE = "family-leave"
 ACTION_FAMILY_DISCOVER = "family-discover"
 ACTION_FAMILY_BATCH_INVITE = "family-batch-invite"
 ACTION_FAMILY_BATCH_REMOVE = "family-batch-remove"
-ACTION_FAMILY_REPLACE = "family-replace"
-ACTION_FAMILY_ROTATE = "family-rotate"
+ACTION_FAMILY_SWAP = "family-swap"
 ACTION_POOL_BATCH_LOGIN = "pool-batch-login"
 ACTION_POOL_MARK_UNUSABLE = "pool-mark-unusable"
-ACTION_POOL_REPLACE_ALL = "pool-replace-all"
 ACTION_OAUTH = "oauth"
 ACTION_PHONE_VERIFY = "phone-verify"
 
@@ -211,8 +209,8 @@ POOL_STATUS_RETIRED = "retired"         # 废弃号（过期或用完）
 POOL_STATUS_UNUSABLE = "unusable"       # 无法使用（地区限制等）
 
 # -- Replace workflow phase labels --
-PHASE_REMOVE_OLD = "--- 阶段1: 移除旧成员 ---"
-PHASE_INVITE_NEW = "--- 阶段2: 邀请新成员 ---"
-PHASE_AUTO_ACCEPT = "--- 阶段3: 新成员自动接受邀请 ---"
-PHASE_AUTO_LOGIN = "--- 新成员自动登录 ---"
-PHASE_ACCEPT_INVITE = "--- 新成员接受邀请 ---"
+PHASE_REMOVE_OLD = "--- 移除旧成员 ---"
+PHASE_INVITE_NEW = "--- 邀请新成员 ---"
+PHASE_LOGIN_SUB = "--- 登录子号 ---"
+PHASE_ACCEPT_INVITE = "--- 自动接受邀请 ---"
+PHASE_DISCOVER_SYNC = "--- 同步验证 ---"

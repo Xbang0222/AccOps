@@ -26,6 +26,7 @@ import type { Group } from '@/types'
 import { getErrorMessage } from '@/utils/http'
 import { generateTOTP } from '@/utils/totp'
 
+import { useSwapOperation } from './useSwapOperation'
 import {
   createAccountOpState,
   getGroupMemberOptions,
@@ -48,8 +49,6 @@ export function useGroupDetailController(groupId: number) {
   const [activeAccountId, setActiveAccountId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   const [selectedEmails, setSelectedEmails] = useState<string[]>([])
-  const [replaceOldEmail, setReplaceOldEmail] = useState('')
-  const [replaceNewEmail, setReplaceNewEmail] = useState('')
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
   const [availableAccountOptions, setAvailableAccountOptions] = useState<{ label: string; value: string }[]>([])
   const [availableAccountsLoading, setAvailableAccountsLoading] = useState(false)
@@ -296,18 +295,28 @@ export function useGroupDetailController(groupId: number) {
     }, 300)
   }, [loadAvailableAccounts])
 
+  const memberOptions = useMemo(
+    () => getGroupMemberOptions(group, activeAccountId),
+    [activeAccountId, group],
+  )
+
+  const swap = useSwapOperation({
+    executeViaWs,
+    memberOptions,
+    msg,
+  })
+
   const openOperationModal = useCallback((accountId: number, operation: AutomationOperationDefinition) => {
     setFormValues({})
     setSelectedEmails([])
-    setReplaceOldEmail('')
-    setReplaceNewEmail('')
+    swap.resetSwapState()
     setActiveOp(operation)
     setActiveAccountId(accountId)
-    // 打开邀请或替换弹窗时预加载可用账号
-    if (operation.key === 'family-invite' || operation.key === 'replace') {
+    // 打开邀请或换号弹窗时预加载可用账号
+    if (operation.key === 'family-invite' || operation.key === 'family-swap') {
       void loadAvailableAccounts()
     }
-  }, [loadAvailableAccounts])
+  }, [loadAvailableAccounts, swap])
 
   const handleOperationClick = useCallback((accountId: number, operation: AutomationOperationDefinition) => {
     if (operation.key === 'family-discover') {
@@ -320,16 +329,9 @@ export function useGroupDetailController(groupId: number) {
       return
     }
 
-    // 一键换号需要二次确认
-    if (operation.key === 'pool-replace-all') {
-      Modal.confirm({
-        title: '一键换号',
-        content: '将移除当前家庭组所有子号，并从号池自动选取新子号替换。确认执行？',
-        okText: '确认执行',
-        okButtonProps: { danger: true },
-        cancelText: '取消',
-        onOk: () => executeViaWs(accountId, 'pool-replace-all', {}, 'pool-replace-all'),
-      })
+    // 换号走弹窗
+    if (operation.key === 'family-swap') {
+      openOperationModal(accountId, operation)
       return
     }
 
@@ -367,36 +369,10 @@ export function useGroupDetailController(groupId: number) {
         return
       }
       executeViaWs(activeAccountId, 'family-batch-remove', { member_emails: selectedEmails.join(',') }, 'family-remove')
-    } else if (activeOp.key === 'replace') {
-      if (!replaceOldEmail) {
-        msg.warning('请选择要移除的成员')
+    } else if (activeOp.key === 'family-swap') {
+      if (!swap.executeSwap(activeAccountId, selectedEmails, formValues)) {
         return
       }
-      if (!replaceNewEmail.trim()) {
-        msg.warning('请输入新成员邮箱')
-        return
-      }
-      executeViaWs(
-        activeAccountId,
-        'family-replace',
-        { old_email: replaceOldEmail, new_email: replaceNewEmail.trim() },
-        'replace',
-      )
-    } else if (activeOp.key === 'family-rotate') {
-      const newCount = parseInt(formValues['new_count'] || '0', 10)
-      if (newCount <= 0) {
-        msg.warning('请输入新子号数量')
-        return
-      }
-      executeViaWs(
-        activeAccountId,
-        'family-rotate',
-        {
-          remove_emails: selectedEmails.join(','),
-          new_count: String(newCount),
-        },
-        'family-rotate',
-      )
     } else {
       for (const field of activeOp.fields ?? []) {
         if (!formValues[field.name]?.trim()) {
@@ -413,7 +389,7 @@ export function useGroupDetailController(groupId: number) {
 
     setActiveOp(null)
     setActiveAccountId(null)
-  }, [activeAccountId, activeOp, executeViaWs, formValues, msg, replaceNewEmail, replaceOldEmail, selectedEmails])
+  }, [activeAccountId, activeOp, executeViaWs, formValues, msg, selectedEmails, swap])
 
   const handleEmailSearch = useCallback((value: string) => {
     const emails = parseEmailInput(value)
@@ -485,10 +461,10 @@ export function useGroupDetailController(groupId: number) {
   }, [loadGroup, msg])
 
   const sortedAccounts = useMemo(() => getSortedGroupAccounts(group), [group])
-  const memberOptions = useMemo(
-    () => getGroupMemberOptions(group, activeAccountId),
-    [activeAccountId, group],
-  )
+
+  const handleSelectAllMembers = useCallback(() => {
+    setSelectedEmails(swap.handleSelectAllMembers())
+  }, [swap])
   const selectedAccount = useMemo(
     () => (group?.accounts ?? []).find((account) => account.id === selectedAccountId) ?? null,
     [group?.accounts, selectedAccountId],
@@ -514,6 +490,7 @@ export function useGroupDetailController(groupId: number) {
     handleOperationClick,
     handlePhoneVerify,
     handleRemoveFromGroup,
+    handleSelectAllMembers,
     handleToggleBrowser,
     loadGroup,
     loading,
@@ -521,8 +498,6 @@ export function useGroupDetailController(groupId: number) {
     memberOptions,
     opStates,
     profileMap,
-    replaceNewEmail,
-    replaceOldEmail,
     selectedAccount,
     selectedAccountId,
     selectedEmails,
@@ -531,11 +506,13 @@ export function useGroupDetailController(groupId: number) {
     setActiveOp,
     setFormValues,
     setMasked,
-    setReplaceNewEmail,
-    setReplaceOldEmail,
     setSelectedAccountId,
     setSelectedEmails,
+    setSwapManualEmails: swap.setSwapManualEmails,
+    setSwapMode: swap.setSwapMode,
     sortedAccounts,
+    swapManualEmails: swap.swapManualEmails,
+    swapMode: swap.swapMode,
     copyToClipboard,
     copyTOTPCode,
   }

@@ -1,4 +1,4 @@
-import { AutoComplete, Input, Modal, Select, Space, Typography } from 'antd'
+import { Button, Input, Modal, Radio, Select, Space, Typography } from 'antd'
 
 import type { AutomationOperationDefinition } from '@/features/automation/operationMeta'
 import type { GroupMemberOption } from '../utils'
@@ -11,17 +11,18 @@ interface GroupOperationModalProps {
   availableAccountsLoading: boolean
   formValues: Record<string, string>
   memberOptions: GroupMemberOption[]
-  replaceNewEmail: string
-  replaceOldEmail: string
   selectedEmails: string[]
+  swapManualEmails: string[]
+  swapMode: 'pool' | 'manual'
   onAvailableAccountSearch: (value: string) => void
   onCancel: () => void
   onChangeFormValue: (name: string, value: string) => void
-  onChangeReplaceNewEmail: (value: string) => void
-  onChangeReplaceOldEmail: (value: string) => void
   onChangeSelectedEmails: (emails: string[]) => void
+  onChangeSwapManualEmails: (emails: string[]) => void
+  onChangeSwapMode: (mode: 'pool' | 'manual') => void
   onOk: () => void
   onSearchEmails: (value: string) => void
+  onSelectAllMembers: () => void
 }
 
 export function GroupOperationModal({
@@ -30,17 +31,18 @@ export function GroupOperationModal({
   availableAccountsLoading,
   formValues,
   memberOptions,
-  replaceNewEmail,
-  replaceOldEmail,
   selectedEmails,
+  swapManualEmails,
+  swapMode,
   onAvailableAccountSearch,
   onCancel,
   onChangeFormValue,
-  onChangeReplaceNewEmail,
-  onChangeReplaceOldEmail,
   onChangeSelectedEmails,
+  onChangeSwapManualEmails,
+  onChangeSwapMode,
   onOk,
   onSearchEmails,
+  onSelectAllMembers,
 }: GroupOperationModalProps) {
   return (
     <Modal
@@ -92,38 +94,21 @@ export function GroupOperationModal({
           />
         ) : null}
 
-        {activeOp?.key === 'replace' ? (
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Select
-              style={{ width: '100%' }}
-              placeholder="选择要移除的旧成员"
-              value={replaceOldEmail || undefined}
-              onChange={onChangeReplaceOldEmail}
-              options={memberOptions}
-              optionFilterProp="label"
-              showSearch
-            />
-            <AutoComplete
-              style={{ width: '100%' }}
-              placeholder="搜索并选择新成员，或直接输入邮箱"
-              value={replaceNewEmail || undefined}
-              onChange={onChangeReplaceNewEmail}
-              onSearch={onAvailableAccountSearch}
-              options={availableAccountOptions}
-            />
-          </Space>
-        ) : null}
-
-        {activeOp?.key === 'family-rotate' ? (
+        {activeOp?.key === 'family-swap' ? (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <div>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-                要移除的子号（从当前成员中选择）:
-              </Text>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  要移除的成员:
+                </Text>
+                <Button type="link" size="small" onClick={onSelectAllMembers} style={{ padding: 0, height: 'auto', fontSize: 12 }}>
+                  全选
+                </Button>
+              </div>
               <Select
                 mode="multiple"
                 style={{ width: '100%' }}
-                placeholder="选择要移除的子号"
+                placeholder="选择要移除的成员（不选则全部移除）"
                 value={selectedEmails}
                 onChange={onChangeSelectedEmails}
                 options={memberOptions}
@@ -132,24 +117,50 @@ export function GroupOperationModal({
             </div>
             <div>
               <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-                新子号数量（从可用池自动选取）:
+                替换方式:
               </Text>
-              <Input
-                type="number"
-                min={1}
-                max={5}
-                placeholder="新子号数量"
-                value={formValues['new_count'] || ''}
-                onChange={(event) => onChangeFormValue('new_count', event.target.value)}
-              />
+              <Radio.Group
+                value={swapMode}
+                onChange={(e) => onChangeSwapMode(e.target.value)}
+                style={{ marginBottom: 8 }}
+              >
+                <Radio value="pool">号池自动选取</Radio>
+                <Radio value="manual">手动指定</Radio>
+              </Radio.Group>
+
+              {swapMode === 'pool' ? (
+                <Input
+                  type="number"
+                  min={1}
+                  max={5}
+                  placeholder="新子号数量（默认与移除数一致）"
+                  value={formValues['new_count'] || ''}
+                  onChange={(event) => onChangeFormValue('new_count', event.target.value)}
+                />
+              ) : (
+                <Select
+                  mode="tags"
+                  style={{ width: '100%' }}
+                  placeholder="搜索并选择账号，或直接输入邮箱回车添加"
+                  value={swapManualEmails}
+                  onChange={onChangeSwapManualEmails}
+                  onSearch={onAvailableAccountSearch}
+                  options={availableAccountOptions}
+                  loading={availableAccountsLoading}
+                  filterOption={false}
+                  tokenSeparators={[',', ';', '\n', '\t']}
+                  showSearch
+                  notFoundContent={availableAccountsLoading ? '搜索中...' : '无匹配账号，可直接输入邮箱回车添加'}
+                />
+              )}
             </div>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              需要主号浏览器运行中；新子号需之前登录过（有 cookies）
+              换号完成后会自动执行同步验证，确保数据库与实际状态一致
             </Text>
           </Space>
         ) : null}
 
-        {activeOp && !['family-invite', 'family-remove', 'replace', 'family-rotate'].includes(activeOp.key) ? (
+        {activeOp && !['family-invite', 'family-remove', 'family-swap'].includes(activeOp.key) ? (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             {activeOp.fields?.map((field) => (
               <Input

@@ -175,20 +175,21 @@ const GroupDetailPage: React.FC = () => {
         availableAccountsLoading={controller.availableAccountsLoading}
         formValues={controller.formValues}
         memberOptions={controller.memberOptions}
-        replaceNewEmail={controller.replaceNewEmail}
-        replaceOldEmail={controller.replaceOldEmail}
         selectedEmails={controller.selectedEmails}
+        swapManualEmails={controller.swapManualEmails}
+        swapMode={controller.swapMode}
         onAvailableAccountSearch={controller.handleAvailableAccountSearch}
         onCancel={() => {
           controller.setActiveOp(null)
           controller.setActiveAccountId(null)
         }}
         onChangeFormValue={(name, value) => controller.setFormValues((previous) => ({ ...previous, [name]: value }))}
-        onChangeReplaceNewEmail={controller.setReplaceNewEmail}
-        onChangeReplaceOldEmail={controller.setReplaceOldEmail}
         onChangeSelectedEmails={controller.setSelectedEmails}
+        onChangeSwapManualEmails={controller.setSwapManualEmails}
+        onChangeSwapMode={controller.setSwapMode}
         onOk={controller.handleFieldModalOk}
         onSearchEmails={controller.handleEmailSearch}
+        onSelectAllMembers={controller.handleSelectAllMembers}
       />
 
       {/* 号池管理弹窗 */}
