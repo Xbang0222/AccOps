@@ -15,6 +15,12 @@ from core.constants import (
     SEL_TOTP_INPUT,
     SEL_TOTP_NEXT,
 )
+from services.page_wait import (
+    safe_ele,
+    safe_click,
+    safe_input,
+    wait_page_stable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,22 +37,22 @@ def enter_password(page, password: str, timeout: int = 5) -> bool:
         True 如果找到输入框并完成输入, False 如果找不到输入框
     """
     pwd_input = (
-        page.ele(SEL_PASSWORD_INPUT, timeout=timeout)
-        or page.ele('input[type="password"]', timeout=min(timeout, 3))
+        safe_ele(page, SEL_PASSWORD_INPUT, timeout=timeout)
+        or safe_ele(page, 'input[type="password"]', timeout=min(timeout, 3))
     )
     if not pwd_input:
         return False
 
-    pwd_input.input(password)
+    safe_input(pwd_input, password, page=page)
     time.sleep(0.5)
     next_btn = (
-        page.ele(SEL_PASSWORD_NEXT, timeout=3)
-        or page.ele("text:Next", timeout=2)
-        or page.ele("text:下一步", timeout=2)
+        safe_ele(page, SEL_PASSWORD_NEXT, timeout=3)
+        or safe_ele(page, "text:Next", timeout=2)
+        or safe_ele(page, "text:下一步", timeout=2)
     )
     if next_btn:
-        next_btn.click()
-        time.sleep(3)
+        safe_click(next_btn, page=page)
+        wait_page_stable(page, timeout=10)
     return True
 
 
@@ -71,29 +77,29 @@ def enter_totp(page, totp_secret: str, timeout: int = 5) -> bool:
     # 如果在 challenge/selection 页面, 先选择 Authenticator
     if "challenge/selection" in page.url:
         opt = (
-            page.ele("text:Authenticator", timeout=3)
-            or page.ele("text:Google Authenticator", timeout=2)
-            or page.ele("text:验证器", timeout=2)
+            safe_ele(page, "text:Authenticator", timeout=3)
+            or safe_ele(page, "text:Google Authenticator", timeout=2)
+            or safe_ele(page, "text:验证器", timeout=2)
         )
         if opt:
-            opt.click()
-            time.sleep(2)
+            safe_click(opt, page=page)
+            wait_page_stable(page, timeout=8)
 
     totp_input = (
-        page.ele(SEL_TOTP_INPUT, timeout=timeout)
-        or page.ele('input[type="tel"]', timeout=min(timeout, 5))
+        safe_ele(page, SEL_TOTP_INPUT, timeout=timeout)
+        or safe_ele(page, 'input[type="tel"]', timeout=min(timeout, 5))
     )
     if not totp_input:
         return False
 
-    totp_input.input(code)
+    safe_input(totp_input, code, page=page)
     time.sleep(0.5)
     btn = (
-        page.ele(SEL_TOTP_NEXT, timeout=3)
-        or page.ele("text:Next", timeout=2)
-        or page.ele("text:下一步", timeout=2)
+        safe_ele(page, SEL_TOTP_NEXT, timeout=3)
+        or safe_ele(page, "text:Next", timeout=2)
+        or safe_ele(page, "text:下一步", timeout=2)
     )
     if btn:
-        btn.click()
-        time.sleep(3)
+        safe_click(btn, page=page)
+        wait_page_stable(page, timeout=10)
     return True

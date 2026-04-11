@@ -30,6 +30,13 @@ from core.constants import (
     SEL_SKIP_LATER_CN2,
 )
 from services.auth_steps import enter_password, enter_totp
+from services.page_wait import (
+    safe_navigate,
+    safe_ele,
+    safe_click,
+    safe_input,
+    wait_page_stable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -433,8 +440,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
     # 先检测是否已登录 (user-data-dir 保留了上次会话)
     if cancel_token:
         cancel_token.check()
-    page.get("https://myaccount.google.com/")
-    time.sleep(3)
+    safe_navigate(page, "https://myaccount.google.com/", min_wait=2.0)
     url = page.url
     # 已登录会停在 myaccount.google.com, 未登录会重定向到 google.com/account/about 或 accounts.google.com
     if "myaccount.google.com" in url and "account/about" not in url and "signin" not in url:
@@ -448,8 +454,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
 
     if cancel_token:
         cancel_token.check()
-    page.get("https://accounts.google.com/signin")
-    time.sleep(2)
+    safe_navigate(page, "https://accounts.google.com/signin", min_wait=1.5)
 
     # 已登录检测: 如果直接跳转到 myaccount 说明已登录
     if "myaccount.google.com" in page.url:
@@ -457,36 +462,39 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         return True
 
     # 邮箱
-    email_input = page.ele(SEL_EMAIL_INPUT, timeout=10)
+    email_input = safe_ele(page, SEL_EMAIL_INPUT, timeout=10)
     if not email_input:
-        use_another = page.ele("text:Use another account", timeout=3)
+        use_another = safe_ele(page, "text:Use another account", timeout=3)
         if use_another:
-            use_another.click()
-            time.sleep(2)
-            email_input = page.ele(SEL_EMAIL_INPUT, timeout=10)
+            safe_click(use_another, page=page)
+            wait_page_stable(page, timeout=8)
+            email_input = safe_ele(page, SEL_EMAIL_INPUT, timeout=10)
     if not email_input:
         logger.error(f"找不到邮箱输入框, URL: {page.url}")
         return False
 
-    email_input.input(email)
+    safe_input(email_input, email, page=page)
     time.sleep(0.5)
-    page.ele(SEL_EMAIL_NEXT, timeout=5).click()
-    time.sleep(3)
+    email_next = safe_ele(page, SEL_EMAIL_NEXT, timeout=5)
+    if email_next:
+        safe_click(email_next, page=page)
+    else:
+        logger.warning(f"找不到邮箱下一步按钮, URL: {page.url}")
+    wait_page_stable(page, timeout=10)
 
     # 密码
     if cancel_token:
         cancel_token.check()
-    time.sleep(2)
+    time.sleep(1)
     if not enter_password(page, password, timeout=15):
         logger.error("找不到密码输入框")
         return False
-    time.sleep(0)  # enter_password already sleeps 3s after click
 
     # TOTP
     if "challenge" in page.url and totp_secret:
         enter_totp(page, totp_secret, timeout=10)
 
-    time.sleep(2)
+    wait_page_stable(page, timeout=8)
 
     # 处理登录后的中间页 (passkey 引导、恢复选项提示等)
     for _ in range(3):
@@ -496,15 +504,15 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         if "speedbump" in url or "passkeyenrollment" in url or "signinoptions" in url:
             # 点击 "以后再说" / "Not now" / "Skip" 跳过
             skip_btn = (
-                page.ele(SEL_SKIP_LATER_CN, timeout=2)
-                or page.ele(SEL_SKIP_NOT_NOW, timeout=2)
-                or page.ele(SEL_SKIP, timeout=2)
-                or page.ele(SEL_SKIP_LATER_CN2, timeout=1)
+                safe_ele(page, SEL_SKIP_LATER_CN, timeout=2)
+                or safe_ele(page, SEL_SKIP_NOT_NOW, timeout=2)
+                or safe_ele(page, SEL_SKIP, timeout=2)
+                or safe_ele(page, SEL_SKIP_LATER_CN2, timeout=1)
             )
             if skip_btn:
-                skip_btn.click()
+                safe_click(skip_btn, page=page)
                 logger.info(f"跳过中间页: {url}")
-                time.sleep(3)
+                wait_page_stable(page, timeout=8)
                 continue
         break
 
@@ -520,7 +528,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
     )
     # 额外检查: 如果页面上有头像/用户菜单, 说明已登录
     if not ok:
-        avatar = page.ele("@aria-label=Google Account", timeout=2) or page.ele("img.gb_q", timeout=1)
+        avatar = safe_ele(page, "@aria-label=Google Account", timeout=2) or safe_ele(page, "img.gb_q", timeout=1)
         if avatar:
             ok = True
     logger.info(f"登录 {email}: {'OK' if ok else 'FAIL'}, URL: {url}")
@@ -559,6 +567,5 @@ def handle_reauth_sync(page, password: str, totp_secret: str = "") -> Optional[s
 
 def get_rapt_sync(page, target_path: str, password: str, totp_secret: str = "") -> Optional[str]:
     """导航到需要 rapt 的页面, 完成重验证, 返回 rapt token"""
-    page.get(f"https://myaccount.google.com{target_path}")
-    time.sleep(3)
+    safe_navigate(page, f"https://myaccount.google.com{target_path}", min_wait=2.0)
     return handle_reauth_sync(page, password, totp_secret)

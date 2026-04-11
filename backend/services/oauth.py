@@ -39,6 +39,13 @@ from services.oauth_support import (
     probe_api,
     try_click_consent_buttons,
 )
+from services.page_wait import (
+    safe_navigate,
+    safe_ele,
+    safe_click,
+    safe_input,
+    wait_page_stable,
+)
 
 logger = logging.getLogger(__name__)
 # ── 浏览器自动 OAuth (核心) ─────────────────────────────
@@ -81,8 +88,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
 
         # Step 2: 浏览器打开 OAuth URL
         tracker.step("打开授权页面", "info", "导航到 Google OAuth...")
-        page.get(auth_url)
-        time.sleep(3)
+        safe_navigate(page, auth_url, min_wait=2.0)
 
         # Step 3: 处理授权页面循环
         # 可能遇到: 选择账号 → 密码验证 → 2FA 验证 → 同意授权 → 回调
@@ -111,38 +117,26 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
             if "accountchooser" in current_url or "selectaccount" in current_url:
                 account_clicked = False
                 # 策略1: data-identifier 属性 (Google v2)
-                account_btn = page.ele("@data-identifier", timeout=1)
+                account_btn = safe_ele(page, "@data-identifier", timeout=1)
                 if account_btn:
-                    try:
-                        account_btn.click()
-                        account_clicked = True
-                    except Exception:
-                        pass
+                    account_clicked = safe_click(account_btn, page=page)
                 # 策略2: data-email 属性 (Google v3)
                 if not account_clicked:
-                    account_btn = page.ele("@data-email", timeout=0.5)
+                    account_btn = safe_ele(page, "@data-email", timeout=0.5)
                     if account_btn:
-                        try:
-                            account_btn.click()
-                            account_clicked = True
-                        except Exception:
-                            pass
+                        account_clicked = safe_click(account_btn, page=page)
                 # 策略3: 账号列表项 (li[role] 或包含邮箱的可点击元素)
                 if not account_clicked:
                     account_btn = (
-                        page.ele('li[data-authuser]', timeout=0.5)
-                        or page.ele('div[data-authuser]', timeout=0.5)
-                        or page.ele('text:@gmail.com', timeout=0.5)
+                        safe_ele(page, 'li[data-authuser]', timeout=0.5)
+                        or safe_ele(page, 'div[data-authuser]', timeout=0.5)
+                        or safe_ele(page, 'text:@gmail.com', timeout=0.5)
                     )
                     if account_btn:
-                        try:
-                            account_btn.click()
-                            account_clicked = True
-                        except Exception:
-                            pass
+                        account_clicked = safe_click(account_btn, page=page)
                 if account_clicked:
                     tracker.step("选择账号", "ok")
-                    time.sleep(3)
+                    wait_page_stable(page, timeout=8)
                     continue
 
             # 4) 密码重验证页面
@@ -166,7 +160,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
             # 6) 尝试点击 OAuth 同意按钮
             if try_click_consent_buttons(page):
                 tracker.step("点击授权按钮", "ok")
-                time.sleep(3)
+                wait_page_stable(page, timeout=8)
                 continue
 
             # 7) 检查是否有 "Check your phone" 类型的等待提示 (Google Prompt)
@@ -310,21 +304,20 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
         if cancel_token:
             cancel_token.check()
         tracker.step("打开验证页面", "info")
-        page.get(validation_url)
-        time.sleep(5)
+        safe_navigate(page, validation_url, min_wait=3.0)
 
         # Step 3: 选择 "Verify your phone number"
         if "uplevelingstep/selection" in page.url:
             tracker.step("选择验证方式", "info", "选择手机号验证")
             phone_option = None
             for sel in ["text:Verify your phone number", "text:验证您的电话号码", "text:phone number"]:
-                phone_option = page.ele(sel, timeout=3)
+                phone_option = safe_ele(page, sel, timeout=3)
                 if phone_option:
                     break
             if not phone_option:
                 return tracker.result(False, "未找到手机验证选项", step="select_method")
-            phone_option.click()
-            time.sleep(4)
+            safe_click(phone_option, page=page)
+            wait_page_stable(page, timeout=10)
             tracker.step("选择验证方式", "ok")
 
         # Step 4: 购买号码
@@ -343,34 +336,33 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
         tracker.step("输入手机号", "info", phone_number)
 
         # 查找手机号输入框
-        phone_input = page.ele(SEL_PHONE_NUMBER_INPUT, timeout=5) or page.ele("input[type='tel']", timeout=3)
+        phone_input = safe_ele(page, SEL_PHONE_NUMBER_INPUT, timeout=5) or safe_ele(page, "input[type='tel']", timeout=3)
         if not phone_input:
             sms_api.cancel(activation_id)
             return tracker.result(False, "找不到手机号输入框", step="phone_input")
 
         # 输入带+号的完整号码, Google 会自动切换国家
         phone_with_plus = f"+{phone_number}" if not phone_number.startswith("+") else phone_number
-        phone_input.clear()
-        phone_input.input(phone_with_plus)
+        safe_input(phone_input, phone_with_plus, page=page, clear_first=True)
         time.sleep(1)
 
         # 点 Next
         next_btn = (
-            page.ele("text:Next", timeout=3)
-            or page.ele("text:下一步", timeout=2)
-            or page.ele("#next", timeout=2)
-            or page.ele("text:Send", timeout=2)
+            safe_ele(page, "text:Next", timeout=3)
+            or safe_ele(page, "text:下一步", timeout=2)
+            or safe_ele(page, "#next", timeout=2)
+            or safe_ele(page, "text:Send", timeout=2)
         )
         if next_btn:
-            next_btn.click()
-            time.sleep(4)
+            safe_click(next_btn, page=page)
+            wait_page_stable(page, timeout=10)
         tracker.step("已发送验证码", "ok")
 
         # 检查是否有错误 (号码无效等)
         error_ele = (
-            page.ele("text:This phone number cannot be used", timeout=2)
-            or page.ele("text:didn't recognize", timeout=1)
-            or page.ele("text:无法使用此电话号码", timeout=1)
+            safe_ele(page, "text:This phone number cannot be used", timeout=2)
+            or safe_ele(page, "text:didn't recognize", timeout=1)
+            or safe_ele(page, "text:无法使用此电话号码", timeout=1)
         )
         if error_ele:
             sms_api.cancel(activation_id)
@@ -393,29 +385,28 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
 
         # 查找验证码输入框 (Google 用 #idvAnyPhonePin)
         code_input = (
-            page.ele(SEL_PHONE_CODE_INPUT, timeout=5)
-            or page.ele("#code", timeout=3)
-            or page.ele("input[type='tel']", timeout=3)
+            safe_ele(page, SEL_PHONE_CODE_INPUT, timeout=5)
+            or safe_ele(page, "#code", timeout=3)
+            or safe_ele(page, "input[type='tel']", timeout=3)
         )
         if not code_input:
             sms_api.finish(activation_id)
             return tracker.result(False, "找不到验证码输入框", step="code_input")
 
-        code_input.clear()
         # 输入框预填了 "G-", 只需输入纯数字验证码
-        code_input.input(code)
+        safe_input(code_input, code, page=page, clear_first=True)
         time.sleep(1)
 
         # 点确认 (Google 用 #idvanyphoneverifyNext)
         verify_btn = (
-            page.ele(SEL_PHONE_VERIFY_NEXT, timeout=3)
-            or page.ele("text:Next", timeout=2)
-            or page.ele("text:Verify", timeout=2)
-            or page.ele("text:下一步", timeout=2)
+            safe_ele(page, SEL_PHONE_VERIFY_NEXT, timeout=3)
+            or safe_ele(page, "text:Next", timeout=2)
+            or safe_ele(page, "text:Verify", timeout=2)
+            or safe_ele(page, "text:下一步", timeout=2)
         )
         if verify_btn:
-            verify_btn.click()
-            time.sleep(5)
+            safe_click(verify_btn, page=page)
+            wait_page_stable(page, timeout=10)
 
         # Step 8: 完成激活
         sms_api.finish(activation_id)
@@ -427,7 +418,7 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
             return tracker.result(True, "手机号验证成功")
 
         # 可能还在验证页面, 检查是否有错误
-        error_ele2 = page.ele("text:Wrong code", timeout=2) or page.ele("text:验证码错误", timeout=1)
+        error_ele2 = safe_ele(page, "text:Wrong code", timeout=2) or safe_ele(page, "text:验证码错误", timeout=1)
         if error_ele2:
             return tracker.result(False, "验证码错误", step="wrong_code")
 

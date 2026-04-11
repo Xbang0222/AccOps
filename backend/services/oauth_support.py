@@ -38,6 +38,7 @@ from core.constants import (
     SEL_TOTP_INPUT,
 )
 from services.auth_steps import enter_password, enter_totp
+from services.page_wait import safe_ele, safe_click
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +242,7 @@ def is_password_page(page) -> bool:
     """检测是否在密码输入页面。"""
     if "challenge/pwd" in page.url or "signin/v2/challenge/password" in page.url:
         return True
-    password_input = page.ele(SEL_PASSWORD_INPUT, timeout=0.5) or page.ele('input[type="password"]', timeout=0.5)
+    password_input = safe_ele(page, SEL_PASSWORD_INPUT, timeout=0.5) or safe_ele(page, 'input[type="password"]', timeout=0.5)
     return bool(password_input)
 
 
@@ -249,7 +250,7 @@ def is_totp_page(page) -> bool:
     """检测是否在 2FA/TOTP 验证页面。"""
     if "challenge/totp" in page.url or "challenge/selection" in page.url:
         return True
-    totp_input = page.ele(SEL_TOTP_INPUT, timeout=0.5) or page.ele('input[type="tel"]', timeout=0.5)
+    totp_input = safe_ele(page, SEL_TOTP_INPUT, timeout=0.5) or safe_ele(page, 'input[type="tel"]', timeout=0.5)
     return bool(totp_input)
 
 
@@ -290,13 +291,10 @@ def try_click_consent_buttons(page) -> bool:
         SEL_OAUTH_BTN_CONTINUE,
     ]
     for selector in selectors:
-        try:
-            button = page.ele(selector, timeout=0.5)
-            if button:
-                button.click()
+        button = safe_ele(page, selector, timeout=0.5, retries=1)
+        if button:
+            if safe_click(button, page=page):
                 return True
-        except Exception:
-            continue
     return False
 
 

@@ -52,6 +52,7 @@ backend/
 │   ├── group_sync.py           # 家庭组同步 (discover结果→数据库)
 │   ├── oauth.py                # OAuth 自动授权 + API 探测 + 自动手机号验证
 │   ├── oauth_support.py        # OAuth 辅助工具
+│   ├── page_wait.py            # DrissionPage 页面等待与重试工具 (防 "page is refreshed" 异常)
 │   ├── sms_api.py              # 接码平台 API 封装 (HeroSMS / SMS-Bus 多提供商)
 │   └── verification.py         # 验证链接提取
 └── utils/

@@ -14,6 +14,12 @@ import logging
 import time
 from typing import Optional
 
+from services.page_wait import (
+    safe_navigate,
+    safe_ele,
+    wait_page_stable,
+)
+
 logger = logging.getLogger(__name__)
 
 AGE_VERIFICATION_URL = "https://myaccount.google.com/age-verification?hl=en&pli=1&utm_source=p0"
@@ -37,15 +43,12 @@ def check_age_verification(page, on_step=None) -> str:
     tracker = StepTracker("age_check", on_step)
 
     tracker.step("检测年龄认证", "info", "导航到认证页面...")
-    page.get(AGE_VERIFICATION_URL)
-    time.sleep(5)
+    safe_navigate(page, AGE_VERIFICATION_URL, min_wait=3.0)
 
     url = page.url
     if "age-verification" not in url:
         # 可能被重定向了, 再试一次
-        time.sleep(3)
-        page.get(AGE_VERIFICATION_URL)
-        time.sleep(5)
+        safe_navigate(page, AGE_VERIFICATION_URL, min_wait=3.0)
         url = page.url
 
     if "age-verification" not in url:
@@ -53,9 +56,9 @@ def check_age_verification(page, on_step=None) -> str:
         return "unknown"
 
     # Layer 1: 认证方式链接检测 (CSS 选择器)
-    has_doc = bool(page.ele(SEL_LINK_DOCUMENT, timeout=2))
-    has_card = bool(page.ele(SEL_LINK_CREDIT_CARD, timeout=1))
-    has_selfie = bool(page.ele(SEL_LINK_SELFIE, timeout=1))
+    has_doc = bool(safe_ele(page, SEL_LINK_DOCUMENT, timeout=2))
+    has_card = bool(safe_ele(page, SEL_LINK_CREDIT_CARD, timeout=1))
+    has_selfie = bool(safe_ele(page, SEL_LINK_SELFIE, timeout=1))
 
     if has_doc or has_card or has_selfie:
         tracker.step("检测年龄认证", "fail", "未认证 (检测到认证方式选择)")
@@ -63,9 +66,9 @@ def check_age_verification(page, on_step=None) -> str:
 
     # Layer 2: 认证方式文本检测 (Google c-wiz 渲染后可能没有标准 <a> 标签)
     try:
-        has_text_id = bool(page.ele('text:Use your ID', timeout=1))
-        has_text_card = bool(page.ele('text:Use your credit card', timeout=1))
-        has_text_selfie = bool(page.ele('text:Take a selfie', timeout=1))
+        has_text_id = bool(safe_ele(page, 'text:Use your ID', timeout=1))
+        has_text_card = bool(safe_ele(page, 'text:Use your credit card', timeout=1))
+        has_text_selfie = bool(safe_ele(page, 'text:Take a selfie', timeout=1))
 
         if has_text_id or has_text_card or has_text_selfie:
             tracker.step("检测年龄认证", "fail", "未认证 (检测到认证方式文本)")
@@ -74,8 +77,8 @@ def check_age_verification(page, on_step=None) -> str:
         pass
 
     # Layer 3: 已认证页面元素
-    has_verified = bool(page.ele(SEL_VERIFIED_CONTAINER, timeout=2))
-    has_unverified = bool(page.ele(SEL_UNVERIFIED_SUBTITLE, timeout=1))
+    has_verified = bool(safe_ele(page, SEL_VERIFIED_CONTAINER, timeout=2))
+    has_unverified = bool(safe_ele(page, SEL_UNVERIFIED_SUBTITLE, timeout=1))
 
     if has_verified and not has_unverified:
         tracker.step("检测年龄认证", "ok", "已认证")
@@ -136,8 +139,7 @@ def execute_credit_card_verification(page, card_number: str, card_expiry: str,
     try:
         # Step 1: 导航到信用卡认证页面
         tracker.step("导航信用卡页面", "info")
-        page.get(CREDIT_CARD_URL)
-        time.sleep(5)
+        safe_navigate(page, CREDIT_CARD_URL, min_wait=3.0)
 
         # Step 2: 等待 buyflow iframe
         tracker.step("等待支付表单", "info", "等待 payments.google.com iframe...")
@@ -157,7 +159,7 @@ def execute_credit_card_verification(page, card_number: str, card_expiry: str,
                 break
 
             # 备选: 直接在页面中查找 iframe 元素
-            iframe_ele = page.ele(f'iframe[src*="{BUYFLOW_URL_PATTERN}"]', timeout=1)
+            iframe_ele = safe_ele(page, f'iframe[src*="{BUYFLOW_URL_PATTERN}"]', timeout=1)
             if iframe_ele:
                 try:
                     iframe = iframe_ele.sr
