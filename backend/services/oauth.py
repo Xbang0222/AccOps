@@ -69,17 +69,28 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
     tracker = StepTracker("oauth", on_step)
 
     try:
-        # Step 0: 年龄认证检测
-        from services.age_verification import check_and_verify_age
-        tracker.step("年龄认证检测", "info")
-        age_result = check_and_verify_age(page, on_step)
-        if age_result.get("status") == "verified":
-            tracker.step("年龄认证", "ok", age_result.get("message", "已通过"))
-        elif not age_result.get("success"):
-            tracker.step("年龄认证", "fail", age_result.get("message", ""))
-            return tracker.result(False, age_result.get("message", "年龄认证失败"), step="age_verify")
+        # Step 0: 年龄认证检测 (可通过设置关闭)
+        from models.database import SessionLocal
+        from routers.settings import get_age_verify_enabled
+        _db = SessionLocal()
+        try:
+            age_verify_enabled = get_age_verify_enabled(_db)
+        finally:
+            _db.close()
+
+        if not age_verify_enabled:
+            tracker.step("年龄认证", "skip", "已在设置中关闭")
         else:
-            tracker.step("年龄认证", "skip", age_result.get("message", ""))
+            from services.age_verification import check_and_verify_age
+            tracker.step("年龄认证检测", "info")
+            age_result = check_and_verify_age(page, on_step)
+            if age_result.get("status") == "verified":
+                tracker.step("年龄认证", "ok", age_result.get("message", "已通过"))
+            elif not age_result.get("success"):
+                tracker.step("年龄认证", "fail", age_result.get("message", ""))
+                return tracker.result(False, age_result.get("message", "年龄认证失败"), step="age_verify")
+            else:
+                tracker.step("年龄认证", "skip", age_result.get("message", ""))
 
         # Step 1: 构建 OAuth URL
         state = secrets.token_urlsafe(32)

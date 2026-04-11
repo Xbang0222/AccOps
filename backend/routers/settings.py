@@ -21,6 +21,7 @@ DEFAULTS = {
     "debug_mode": "false",
     "headless_mode": "false",
     "default_sms_provider_id": "",
+    "age_verify_enabled": "false",
     "card_number": "",
     "card_expiry": "",
     "card_cvv": "",
@@ -53,12 +54,18 @@ def get_debug_mode(db: Session) -> bool:
     return _get(db, "debug_mode") == "true"
 
 
+def get_age_verify_enabled(db: Session) -> bool:
+    """获取年龄认证开关状态 (供其他模块调用)"""
+    return _get(db, "age_verify_enabled") == "true"
+
+
 # ---- 请求/响应模型 ----
 
 class SettingsResponse(BaseModel):
     debug_mode: bool
     headless_mode: bool
     default_sms_provider_id: str
+    age_verify_enabled: bool
     card_number: str
     card_expiry: str
     card_cvv: str
@@ -69,10 +76,25 @@ class SettingsUpdateRequest(BaseModel):
     debug_mode: Optional[bool] = None
     headless_mode: Optional[bool] = None
     default_sms_provider_id: Optional[str] = None
+    age_verify_enabled: Optional[bool] = None
     card_number: Optional[str] = None
     card_expiry: Optional[str] = None
     card_cvv: Optional[str] = None
     card_zip: Optional[str] = None
+
+
+def _build_response(db: Session) -> SettingsResponse:
+    """构建完整的设置响应"""
+    return SettingsResponse(
+        debug_mode=_get(db, "debug_mode") == "true",
+        headless_mode=_get(db, "headless_mode") == "true",
+        default_sms_provider_id=_get(db, "default_sms_provider_id"),
+        age_verify_enabled=_get(db, "age_verify_enabled") == "true",
+        card_number=_get(db, "card_number"),
+        card_expiry=_get(db, "card_expiry"),
+        card_cvv=_get(db, "card_cvv"),
+        card_zip=_get(db, "card_zip"),
+    )
 
 
 # ---- 路由 ----
@@ -80,15 +102,7 @@ class SettingsUpdateRequest(BaseModel):
 @router.get("")
 def get_settings(db: Session = Depends(get_db)):
     """获取所有系统设置"""
-    return SettingsResponse(
-        debug_mode=_get(db, "debug_mode") == "true",
-        headless_mode=_get(db, "headless_mode") == "true",
-        default_sms_provider_id=_get(db, "default_sms_provider_id"),
-        card_number=_get(db, "card_number"),
-        card_expiry=_get(db, "card_expiry"),
-        card_cvv=_get(db, "card_cvv"),
-        card_zip=_get(db, "card_zip"),
-    )
+    return _build_response(db)
 
 
 @router.put("")
@@ -100,6 +114,8 @@ def update_settings(req: SettingsUpdateRequest, db: Session = Depends(get_db)):
         _set(db, "headless_mode", "true" if req.headless_mode else "false")
     if req.default_sms_provider_id is not None:
         _set(db, "default_sms_provider_id", req.default_sms_provider_id)
+    if req.age_verify_enabled is not None:
+        _set(db, "age_verify_enabled", "true" if req.age_verify_enabled else "false")
     if req.card_number is not None:
         _set(db, "card_number", req.card_number)
     if req.card_expiry is not None:
@@ -109,12 +125,4 @@ def update_settings(req: SettingsUpdateRequest, db: Session = Depends(get_db)):
     if req.card_zip is not None:
         _set(db, "card_zip", req.card_zip)
 
-    return SettingsResponse(
-        debug_mode=_get(db, "debug_mode") == "true",
-        headless_mode=_get(db, "headless_mode") == "true",
-        default_sms_provider_id=_get(db, "default_sms_provider_id"),
-        card_number=_get(db, "card_number"),
-        card_expiry=_get(db, "card_expiry"),
-        card_cvv=_get(db, "card_cvv"),
-        card_zip=_get(db, "card_zip"),
-    )
+    return _build_response(db)

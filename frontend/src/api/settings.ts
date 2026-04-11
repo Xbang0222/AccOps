@@ -5,6 +5,7 @@ export interface Settings {
   debug_mode: boolean;
   headless_mode: boolean;
   default_sms_provider_id: string;
+  age_verify_enabled: boolean;
   card_number: string;
   card_expiry: string;
   card_cvv: string;

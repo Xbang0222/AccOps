@@ -20,6 +20,7 @@ import {
   FileTextOutlined,
   EyeInvisibleOutlined,
   PhoneOutlined,
+  SafetyCertificateOutlined,
   CreditCardOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
@@ -75,6 +76,9 @@ function SettingsPage() {
 
   const handleToggleHeadless = (checked: boolean) =>
     updateSetting('headless_mode', checked, checked ? '无头模式已开启' : '无头模式已关闭');
+
+  const handleToggleAgeVerify = (checked: boolean) =>
+    updateSetting('age_verify_enabled', checked, checked ? '年龄认证已开启' : '年龄认证已关闭');
 
   if (loading) {
     return (
@@ -251,7 +255,48 @@ function SettingsPage() {
         </div>
       </Card>
 
-      {/* 信用卡配置 (年龄认证用) */}
+      {/* 年龄认证 */}
+      <Card
+        style={{ marginTop: 16 }}
+        title={
+          <Space>
+            <SafetyCertificateOutlined />
+            <span>年龄认证</span>
+            {settings?.age_verify_enabled && (
+              <Tag color="green">已开启</Tag>
+            )}
+          </Space>
+        }
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <div>
+            <Text strong style={{ fontSize: 15 }}>
+              启用年龄认证
+            </Text>
+            <Paragraph
+              type="secondary"
+              style={{ marginBottom: 0, marginTop: 4 }}
+            >
+              开启后，OAuth 授权前自动检测并完成 Google 年龄认证（需配置信用卡）
+            </Paragraph>
+          </div>
+          <Switch
+            checked={settings?.age_verify_enabled}
+            onChange={handleToggleAgeVerify}
+            loading={saving}
+            aria-label="启用年龄认证"
+          />
+        </div>
+      </Card>
+
+      {/* 信用卡配置 (年龄认证用) — 仅在年龄认证开启时显示 */}
+      {settings?.age_verify_enabled && (
       <Card
         style={{ marginTop: 16 }}
         title={
@@ -339,6 +384,7 @@ function SettingsPage() {
           </div>
         </div>
       </Card>
+      )}
 
       {/* 存储清理 */}
       <StorageStatsCard />
