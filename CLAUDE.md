@@ -84,7 +84,7 @@ frontend/src/
 │   ├── GroupManagePage.tsx       # 分组管理 (卡片列表)
 │   ├── GroupDetailPage.tsx       # 分组详情 (左侧卡片列表 + 右侧日志面板)
 │   ├── SmsPage.tsx              # 接码管理 (左侧国家列表 + 右侧历史记录)
-│   └── SettingsPage.tsx         # 系统设置 (调试模式 / 无头模式 / 默认接码提供商)
+│   └── SettingsPage.tsx         # 系统设置 (调试模式 / 无头模式 / 年龄认证 / 默认接码提供商)
 ├── components/
 │   ├── AccountModal.tsx         # 账号编辑弹窗
 │   ├── ErrorBoundary.tsx        # 错误边界 (渲染错误优雅降级)
@@ -304,6 +304,7 @@ cookies 过期时的自动恢复机制 (4 级回退):
 | ------------------------- | ------------------------------------------------------ |
 | `debug_mode`              | 调试模式: 自动化步骤详细日志                           |
 | `headless_mode`           | 无头浏览器模式 (Google 登录不支持，自动登录时强制关闭) |
+| `age_verify_enabled`      | 年龄认证开关: 关闭时 OAuth 跳过年龄认证 (默认关闭)     |
 | `default_sms_provider_id` | 默认接码提供商 ID                                      |
 
 ## 开发指引
