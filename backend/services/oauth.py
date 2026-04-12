@@ -40,10 +40,12 @@ from services.oauth_support import (
     try_click_consent_buttons,
 )
 from services.page_wait import (
+    _is_refresh_error,
     safe_navigate,
     safe_ele,
     safe_click,
     safe_input,
+    safe_url,
     wait_page_stable,
 )
 
@@ -112,7 +114,12 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
         for tick in range(max_wait):
             if cancel_token:
                 cancel_token.check()
-            current_url = page.url
+
+            try:
+                current_url = safe_url(page)
+            except Exception:
+                wait_page_stable(page, timeout=5)
+                continue
 
             # 1) 检查是否已经回调 (拿到 code)
             code = check_for_code(current_url)
@@ -124,66 +131,74 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
             if error:
                 return tracker.result(False, f"授权被拒绝: {error}", step="auth")
 
-            # 3) 如果页面要求选择账号, 点击当前账号
-            if "accountchooser" in current_url or "selectaccount" in current_url:
-                account_clicked = False
-                # 策略1: data-identifier 属性 (Google v2)
-                account_btn = safe_ele(page, "@data-identifier", timeout=1)
-                if account_btn:
-                    account_clicked = safe_click(account_btn, page=page)
-                # 策略2: data-email 属性 (Google v3)
-                if not account_clicked:
-                    account_btn = safe_ele(page, "@data-email", timeout=0.5)
+            try:
+                # 3) 如果页面要求选择账号, 点击当前账号
+                if "accountchooser" in current_url or "selectaccount" in current_url:
+                    account_clicked = False
+                    # 策略1: data-identifier 属性 (Google v2)
+                    account_btn = safe_ele(page, "@data-identifier", timeout=1)
                     if account_btn:
                         account_clicked = safe_click(account_btn, page=page)
-                # 策略3: 账号列表项 (li[role] 或包含邮箱的可点击元素)
-                if not account_clicked:
-                    account_btn = (
-                        safe_ele(page, 'li[data-authuser]', timeout=0.5)
-                        or safe_ele(page, 'div[data-authuser]', timeout=0.5)
-                        or safe_ele(page, 'text:@gmail.com', timeout=0.5)
-                    )
-                    if account_btn:
-                        account_clicked = safe_click(account_btn, page=page)
-                if account_clicked:
-                    tracker.step("选择账号", "ok")
+                    # 策略2: data-email 属性 (Google v3)
+                    if not account_clicked:
+                        account_btn = safe_ele(page, "@data-email", timeout=0.5)
+                        if account_btn:
+                            account_clicked = safe_click(account_btn, page=page)
+                    # 策略3: 账号列表项 (li[role] 或包含邮箱的可点击元素)
+                    if not account_clicked:
+                        account_btn = (
+                            safe_ele(page, 'li[data-authuser]', timeout=0.5)
+                            or safe_ele(page, 'div[data-authuser]', timeout=0.5)
+                            or safe_ele(page, 'text:@gmail.com', timeout=0.5)
+                        )
+                        if account_btn:
+                            account_clicked = safe_click(account_btn, page=page)
+                    if account_clicked:
+                        tracker.step("选择账号", "ok")
+                        wait_page_stable(page, timeout=8)
+                        continue
+
+                # 4) 密码重验证页面
+                if not password_handled and is_password_page(page):
+                    if not password:
+                        return tracker.result(False, "需要密码重验证但账号无密码", step="password")
+                    if handle_password(page, password, tracker):
+                        password_handled = True
+                        continue
+                    else:
+                        return tracker.result(False, "密码验证失败", step="password")
+
+                # 5) 2FA/TOTP 验证页面
+                if not totp_handled and is_totp_page(page):
+                    if handle_totp(page, totp_secret, tracker):
+                        totp_handled = True
+                        continue
+                    else:
+                        return tracker.result(False, "2FA 验证失败", step="totp")
+
+                # 6) 尝试点击 OAuth 同意按钮
+                if try_click_consent_buttons(page):
+                    tracker.step("点击授权按钮", "ok")
                     wait_page_stable(page, timeout=8)
                     continue
 
-            # 4) 密码重验证页面
-            if not password_handled and is_password_page(page):
-                if not password:
-                    return tracker.result(False, "需要密码重验证但账号无密码", step="password")
-                if handle_password(page, password, tracker):
-                    password_handled = True
+                # 7) 检查是否有 "Check your phone" 类型的等待提示 (Google Prompt)
+                if "challenge" in current_url and not is_password_page(page) and not is_totp_page(page):
+                    if tick % 5 == 0:
+                        tracker.step("等待验证", "info", f"请在手机上确认或等待... ({tick}s)")
+
+            except Exception as e:
+                if _is_refresh_error(e):
+                    logger.debug(f"OAuth 循环被页面刷新打断 (tick={tick}): {e}")
+                    wait_page_stable(page, timeout=5)
                     continue
-                else:
-                    return tracker.result(False, "密码验证失败", step="password")
-
-            # 5) 2FA/TOTP 验证页面
-            if not totp_handled and is_totp_page(page):
-                if handle_totp(page, totp_secret, tracker):
-                    totp_handled = True
-                    continue
-                else:
-                    return tracker.result(False, "2FA 验证失败", step="totp")
-
-            # 6) 尝试点击 OAuth 同意按钮
-            if try_click_consent_buttons(page):
-                tracker.step("点击授权按钮", "ok")
-                wait_page_stable(page, timeout=8)
-                continue
-
-            # 7) 检查是否有 "Check your phone" 类型的等待提示 (Google Prompt)
-            if "challenge" in current_url and not is_password_page(page) and not is_totp_page(page):
-                if tick % 5 == 0:
-                    tracker.step("等待验证", "info", f"请在手机上确认或等待... ({tick}s)")
+                raise
 
             time.sleep(1)
 
         if not code:
             # 最后一次检查 URL
-            final_url = page.url
+            final_url = safe_url(page)
             code = check_for_code(final_url)
             if not code:
                 return tracker.result(False, f"授权超时, 未获取到 code. URL: {final_url[:100]}", step="auth")
@@ -249,7 +264,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                         tracker.step("自动接码验证", "ok", verify_msg)
                         credential.pop("validation_url", None)
                         # 保存最终页面信息
-                        credential["verify_final_url"] = page.url
+                        credential["verify_final_url"] = safe_url(page)
                         try:
                             page.get_screenshot(".verification_final.png")
                         except Exception:
@@ -318,7 +333,7 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
         safe_navigate(page, validation_url, min_wait=3.0)
 
         # Step 3: 选择 "Verify your phone number"
-        if "uplevelingstep/selection" in page.url:
+        if "uplevelingstep/selection" in safe_url(page):
             tracker.step("选择验证方式", "info", "选择手机号验证")
             phone_option = None
             for sel in ["text:Verify your phone number", "text:验证您的电话号码", "text:phone number"]:
@@ -346,11 +361,28 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
         # Step 5: 输入手机号
         tracker.step("输入手机号", "info", phone_number)
 
-        # 查找手机号输入框
-        phone_input = safe_ele(page, SEL_PHONE_NUMBER_INPUT, timeout=5) or safe_ele(page, "input[type='tel']", timeout=3)
+        # 查找手机号输入框 (多选择器回退, 加长等待)
+        phone_input = None
+        for sel in [
+            SEL_PHONE_NUMBER_INPUT,        # #phoneNumberId
+            "input[type='tel']",
+            "input[name='phoneNumber']",
+            "input[autocomplete='tel']",
+        ]:
+            phone_input = safe_ele(page, sel, timeout=8)
+            if phone_input:
+                break
+        if not phone_input:
+            # 可能页面还在过渡, 等待后再试一次
+            logger.warning(f"首次未找到手机号输入框, 当前 URL: {safe_url(page)}")
+            wait_page_stable(page, timeout=10)
+            for sel in [SEL_PHONE_NUMBER_INPUT, "input[type='tel']"]:
+                phone_input = safe_ele(page, sel, timeout=5)
+                if phone_input:
+                    break
         if not phone_input:
             sms_api.cancel(activation_id)
-            return tracker.result(False, "找不到手机号输入框", step="phone_input")
+            return tracker.result(False, f"找不到手机号输入框, URL: {safe_url(page)[:100]}", step="phone_input")
 
         # 输入带+号的完整号码, Google 会自动切换国家
         phone_with_plus = f"+{phone_number}" if not phone_number.startswith("+") else phone_number
@@ -424,7 +456,7 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
         tracker.step("验证完成", "ok")
 
         # 检查是否成功 (页面跳转到成功页)
-        current_url = page.url
+        current_url = safe_url(page)
         if "auth_success" in current_url or "gemini-code-assist" in current_url or "myaccount" in current_url:
             return tracker.result(True, "手机号验证成功")
 

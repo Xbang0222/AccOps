@@ -35,6 +35,7 @@ from services.page_wait import (
     safe_ele,
     safe_click,
     safe_input,
+    safe_url,
     wait_page_stable,
 )
 
@@ -441,11 +442,14 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
     if cancel_token:
         cancel_token.check()
     safe_navigate(page, "https://myaccount.google.com/", min_wait=2.0)
-    url = page.url
+    url = safe_url(page)
     # 已登录会停在 myaccount.google.com, 未登录会重定向到 google.com/account/about 或 accounts.google.com
     if "myaccount.google.com" in url and "account/about" not in url and "signin" not in url:
         # 确认是目标账号 (页面上应该有邮箱)
-        page_text = page.html or ""
+        try:
+            page_text = page.html or ""
+        except Exception:
+            page_text = ""
         if email.lower() in page_text.lower():
             logger.info(f"账号已登录 (session 有效), email={email}")
             return True
@@ -457,7 +461,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
     safe_navigate(page, "https://accounts.google.com/signin", min_wait=1.5)
 
     # 已登录检测: 如果直接跳转到 myaccount 说明已登录
-    if "myaccount.google.com" in page.url:
+    if "myaccount.google.com" in safe_url(page):
         logger.info(f"账号已登录 (跳转到 myaccount), email={email}")
         return True
 
@@ -470,7 +474,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
             wait_page_stable(page, timeout=8)
             email_input = safe_ele(page, SEL_EMAIL_INPUT, timeout=10)
     if not email_input:
-        logger.error(f"找不到邮箱输入框, URL: {page.url}")
+        logger.error(f"找不到邮箱输入框, URL: {safe_url(page)}")
         return False
 
     safe_input(email_input, email, page=page)
@@ -479,7 +483,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
     if email_next:
         safe_click(email_next, page=page)
     else:
-        logger.warning(f"找不到邮箱下一步按钮, URL: {page.url}")
+        logger.warning(f"找不到邮箱下一步按钮, URL: {safe_url(page)}")
     wait_page_stable(page, timeout=10)
 
     # 密码
@@ -491,7 +495,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         return False
 
     # TOTP
-    if "challenge" in page.url and totp_secret:
+    if "challenge" in safe_url(page) and totp_secret:
         enter_totp(page, totp_secret, timeout=10)
 
     wait_page_stable(page, timeout=8)
@@ -500,7 +504,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
     for _ in range(3):
         if cancel_token:
             cancel_token.check()
-        url = page.url
+        url = safe_url(page)
         if "speedbump" in url or "passkeyenrollment" in url or "signinoptions" in url:
             # 点击 "以后再说" / "Not now" / "Skip" 跳过
             skip_btn = (
@@ -517,7 +521,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         break
 
     # 登录成功判断: 多种成功后的 URL 模式
-    url = page.url
+    url = safe_url(page)
     ok = (
         "myaccount" in url
         or "speedbump" in url  # passkey 引导页 (跳过按钮可能未点到, 但登录已完成)
@@ -540,11 +544,12 @@ def handle_reauth_sync(page, password: str, totp_secret: str = "") -> Optional[s
 
     Returns: rapt token string, or None if no reauth needed
     """
-    if "challenge" not in page.url and "signin" not in page.url:
+    url = safe_url(page)
+    if "challenge" not in url and "signin" not in url:
         # 检查 URL 中是否已有 rapt
-        if "rapt=" in page.url:
+        if "rapt=" in url:
             import re
-            m = re.search(r'rapt=([^&]+)', page.url)
+            m = re.search(r'rapt=([^&]+)', url)
             return m.group(1) if m else None
         return None
 
@@ -554,12 +559,13 @@ def handle_reauth_sync(page, password: str, totp_secret: str = "") -> Optional[s
     enter_password(page, password, timeout=5)
 
     # TOTP
-    if "challenge" in page.url and totp_secret:
+    if "challenge" in safe_url(page) and totp_secret:
         enter_totp(page, totp_secret, timeout=5)
 
     # 提取 rapt
     import re
-    m = re.search(r'rapt=([^&]+)', page.url)
+    url = safe_url(page)
+    m = re.search(r'rapt=([^&]+)', url)
     rapt = m.group(1) if m else None
     logger.info(f"rapt: {'获取成功' if rapt else '未获取到'}")
     return rapt

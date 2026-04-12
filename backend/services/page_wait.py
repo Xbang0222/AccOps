@@ -21,12 +21,24 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# DrissionPage 页面刷新/元素不可用异常的关键词
+# DrissionPage 专用异常类型 (直接类型匹配, 比字符串检测更可靠)
+try:
+    from DrissionPage.errors import (
+        ElementLostError,
+        ContextLostError,
+        PageDisconnectedError,
+    )
+    _DP_REFRESH_ERRORS = (ElementLostError, ContextLostError, PageDisconnectedError)
+except ImportError:
+    _DP_REFRESH_ERRORS = ()
+
+# DrissionPage 页面刷新/元素不可用异常的关键词 (兜底字符串匹配)
 _REFRESH_KEYWORDS = (
     "page is refreshed",
     "Please wait until the page",
     "is loading",
     "has no location or size",  # 元素存在但不可见/不可交互
+    "element object is invalid",  # 页面整体/局部 JS 刷新导致元素引用失效
 )
 
 # 默认重试配置
@@ -39,6 +51,10 @@ _POST_READY_BUFFER = 0.3
 
 def _is_refresh_error(exc: Exception) -> bool:
     """判断异常是否为页面刷新/加载中导致的"""
+    # 优先类型匹配
+    if _DP_REFRESH_ERRORS and isinstance(exc, _DP_REFRESH_ERRORS):
+        return True
+    # 兜底字符串匹配
     msg = str(exc)
     return any(kw in msg for kw in _REFRESH_KEYWORDS)
 
@@ -255,6 +271,28 @@ def _extract_selector(ele):
     except Exception:
         pass
     return None
+
+
+def safe_url(page) -> str:
+    """安全读取 page.url — 自动处理页面刷新
+
+    DrissionPage 在页面刷新中访问 .url 可能抛 ElementLostError/ContextLostError,
+    本函数捕获后等待页面稳定再重试一次。
+
+    Args:
+        page: DrissionPage 页面对象
+
+    Returns:
+        当前页面 URL
+    """
+    try:
+        return page.url
+    except Exception as e:
+        if _is_refresh_error(e):
+            logger.debug("page.url 被页面刷新打断, 等待后重试")
+            wait_page_stable(page, timeout=5)
+            return page.url
+        raise
 
 
 def retry_on_refresh(func: Optional[Callable[..., T]] = None, *,

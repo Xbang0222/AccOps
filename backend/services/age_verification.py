@@ -17,6 +17,7 @@ from typing import Optional
 from services.page_wait import (
     safe_navigate,
     safe_ele,
+    safe_url,
     wait_page_stable,
 )
 
@@ -45,11 +46,11 @@ def check_age_verification(page, on_step=None) -> str:
     tracker.step("检测年龄认证", "info", "导航到认证页面...")
     safe_navigate(page, AGE_VERIFICATION_URL, min_wait=3.0)
 
-    url = page.url
+    url = safe_url(page)
     if "age-verification" not in url:
         # 可能被重定向了, 再试一次
         safe_navigate(page, AGE_VERIFICATION_URL, min_wait=3.0)
-        url = page.url
+        url = safe_url(page)
 
     if "age-verification" not in url:
         tracker.step("检测年龄认证", "skip", f"无法到达认证页面: {url[:80]}")
@@ -264,7 +265,7 @@ def execute_credit_card_verification(page, card_number: str, card_expiry: str,
         tracker.step("等待认证结果", "info")
         for _ in range(15):
             time.sleep(2)
-            url = page.url
+            url = safe_url(page)
 
             # 跳回年龄认证页面(非信用卡) → 可能成功
             if "age-verification" in url and "credit-card" not in url:

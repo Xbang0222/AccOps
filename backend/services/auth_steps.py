@@ -19,6 +19,7 @@ from services.page_wait import (
     safe_ele,
     safe_click,
     safe_input,
+    safe_url,
     wait_page_stable,
 )
 
@@ -75,7 +76,7 @@ def enter_totp(page, totp_secret: str, timeout: int = 5) -> bool:
     code = pyotp.TOTP(totp_secret.replace(' ', '')).now()
 
     # 如果在 challenge/selection 页面, 先选择 Authenticator
-    if "challenge/selection" in page.url:
+    if "challenge/selection" in safe_url(page):
         opt = (
             safe_ele(page, "text:Authenticator", timeout=3)
             or safe_ele(page, "text:Google Authenticator", timeout=2)
