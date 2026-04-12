@@ -40,16 +40,40 @@ from services.oauth_support import (
     try_click_consent_buttons,
 )
 from services.page_wait import (
-    _is_refresh_error,
+    is_refresh_error,
     safe_navigate,
     safe_ele,
     safe_click,
     safe_input,
     safe_url,
+    safe_url_for_log,
     wait_page_stable,
 )
 
 logger = logging.getLogger(__name__)
+
+# 手机号输入框选择器 (按优先级排列, 用于 auto_phone_verify_sync)
+_PHONE_INPUT_SELECTORS = (
+    SEL_PHONE_NUMBER_INPUT,        # #phoneNumberId
+    "input[type='tel']",
+    "input[name='phoneNumber']",
+    "input[autocomplete='tel']",
+)
+
+
+def _find_phone_input(page, timeout: int = 8):
+    """遍历选择器列表查找手机号输入框, 返回第一个匹配或 None。
+
+    主选择器使用完整 timeout, 后续选择器缩短为 2s 避免空等。
+    """
+    for i, sel in enumerate(_PHONE_INPUT_SELECTORS):
+        t = timeout if i == 0 else min(timeout, 2)
+        el = safe_ele(page, sel, timeout=t)
+        if el:
+            return el
+    return None
+
+
 # ── 浏览器自动 OAuth (核心) ─────────────────────────────
 
 
@@ -117,9 +141,12 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
 
             try:
                 current_url = safe_url(page)
-            except Exception:
-                wait_page_stable(page, timeout=5)
-                continue
+            except Exception as e:
+                if is_refresh_error(e):
+                    logger.debug("OAuth loop: URL fetch interrupted by refresh at tick=%d", tick)
+                    wait_page_stable(page, timeout=5)
+                    continue
+                raise
 
             # 1) 检查是否已经回调 (拿到 code)
             code = check_for_code(current_url)
@@ -131,8 +158,10 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
             if error:
                 return tracker.result(False, f"授权被拒绝: {error}", step="auth")
 
+            _step = "account_selection"
             try:
                 # 3) 如果页面要求选择账号, 点击当前账号
+                _step = "account_selection"
                 if "accountchooser" in current_url or "selectaccount" in current_url:
                     account_clicked = False
                     # 策略1: data-identifier 属性 (Google v2)
@@ -159,6 +188,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                         continue
 
                 # 4) 密码重验证页面
+                _step = "password_reauth"
                 if not password_handled and is_password_page(page):
                     if not password:
                         return tracker.result(False, "需要密码重验证但账号无密码", step="password")
@@ -169,6 +199,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                         return tracker.result(False, "密码验证失败", step="password")
 
                 # 5) 2FA/TOTP 验证页面
+                _step = "totp_verify"
                 if not totp_handled and is_totp_page(page):
                     if handle_totp(page, totp_secret, tracker):
                         totp_handled = True
@@ -177,19 +208,21 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
                         return tracker.result(False, "2FA 验证失败", step="totp")
 
                 # 6) 尝试点击 OAuth 同意按钮
+                _step = "consent_click"
                 if try_click_consent_buttons(page):
                     tracker.step("点击授权按钮", "ok")
                     wait_page_stable(page, timeout=8)
                     continue
 
                 # 7) 检查是否有 "Check your phone" 类型的等待提示 (Google Prompt)
+                _step = "challenge_wait"
                 if "challenge" in current_url and not is_password_page(page) and not is_totp_page(page):
                     if tick % 5 == 0:
                         tracker.step("等待验证", "info", f"请在手机上确认或等待... ({tick}s)")
 
             except Exception as e:
-                if _is_refresh_error(e):
-                    logger.debug(f"OAuth 循环被页面刷新打断 (tick={tick}): {e}")
+                if is_refresh_error(e):
+                    logger.debug("OAuth: refresh error during '%s' (tick=%d): %s", _step, tick, e)
                     wait_page_stable(page, timeout=5)
                     continue
                 raise
@@ -362,27 +395,15 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
         tracker.step("输入手机号", "info", phone_number)
 
         # 查找手机号输入框 (多选择器回退, 加长等待)
-        phone_input = None
-        for sel in [
-            SEL_PHONE_NUMBER_INPUT,        # #phoneNumberId
-            "input[type='tel']",
-            "input[name='phoneNumber']",
-            "input[autocomplete='tel']",
-        ]:
-            phone_input = safe_ele(page, sel, timeout=8)
-            if phone_input:
-                break
+        phone_input = _find_phone_input(page, timeout=8)
         if not phone_input:
             # 可能页面还在过渡, 等待后再试一次
-            logger.warning(f"首次未找到手机号输入框, 当前 URL: {safe_url(page)}")
+            logger.warning("首次未找到手机号输入框, 当前 URL: %s", safe_url_for_log(page))
             wait_page_stable(page, timeout=10)
-            for sel in [SEL_PHONE_NUMBER_INPUT, "input[type='tel']"]:
-                phone_input = safe_ele(page, sel, timeout=5)
-                if phone_input:
-                    break
+            phone_input = _find_phone_input(page, timeout=5)
         if not phone_input:
             sms_api.cancel(activation_id)
-            return tracker.result(False, f"找不到手机号输入框, URL: {safe_url(page)[:100]}", step="phone_input")
+            return tracker.result(False, f"找不到手机号输入框, URL: {safe_url_for_log(page)}", step="phone_input")
 
         # 输入带+号的完整号码, Google 会自动切换国家
         phone_with_plus = f"+{phone_number}" if not phone_number.startswith("+") else phone_number

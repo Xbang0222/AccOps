@@ -30,6 +30,10 @@ try:
     )
     _DP_REFRESH_ERRORS = (ElementLostError, ContextLostError, PageDisconnectedError)
 except ImportError:
+    logger.warning(
+        "DrissionPage error types not available; "
+        "refresh detection falls back to string matching"
+    )
     _DP_REFRESH_ERRORS = ()
 
 # DrissionPage 页面刷新/元素不可用异常的关键词 (兜底字符串匹配)
@@ -47,9 +51,11 @@ DEFAULT_RETRY_DELAY = 1.0
 PAGE_STABLE_TIMEOUT = 15
 # readyState == 'complete' 后的额外缓冲 (Google c-wiz JS 框架初始化)
 _POST_READY_BUFFER = 0.3
+# 浏览器错误页 URL 前缀 (用于 wait_page_stable 后的健全检查)
+_ERROR_URL_PREFIXES = ("about:", "chrome-error://", "data:")
 
 
-def _is_refresh_error(exc: Exception) -> bool:
+def is_refresh_error(exc: Exception) -> bool:
     """判断异常是否为页面刷新/加载中导致的"""
     # 优先类型匹配
     if _DP_REFRESH_ERRORS and isinstance(exc, _DP_REFRESH_ERRORS):
@@ -57,6 +63,10 @@ def _is_refresh_error(exc: Exception) -> bool:
     # 兜底字符串匹配
     msg = str(exc)
     return any(kw in msg for kw in _REFRESH_KEYWORDS)
+
+
+# 向后兼容别名 (外部模块可能引用旧名)
+_is_refresh_error = is_refresh_error
 
 
 def wait_page_stable(page, timeout: float = PAGE_STABLE_TIMEOUT,
@@ -82,9 +92,19 @@ def wait_page_stable(page, timeout: float = PAGE_STABLE_TIMEOUT,
             state = page.run_js("return document.readyState")
             if state == "complete":
                 time.sleep(_POST_READY_BUFFER)
+                # 健全检查: 确认页面不是浏览器错误页
+                try:
+                    url = page.url
+                    if any(url.startswith(p) for p in _ERROR_URL_PREFIXES):
+                        logger.warning(
+                            "wait_page_stable: suspicious URL after stabilization: %s",
+                            url[:100],
+                        )
+                except Exception:
+                    pass
                 return True
         except Exception as e:
-            if _is_refresh_error(e):
+            if is_refresh_error(e):
                 logger.debug("页面刷新中, 继续等待...")
             else:
                 logger.warning(f"wait_page_stable 异常: {e}")
@@ -114,7 +134,7 @@ def safe_navigate(page, url: str, timeout: float = PAGE_STABLE_TIMEOUT,
     try:
         page.get(url)
     except Exception as e:
-        if _is_refresh_error(e):
+        if is_refresh_error(e):
             logger.debug(f"导航触发页面刷新: {url}")
         else:
             logger.warning(f"导航异常: {url} - {e}")
@@ -150,12 +170,12 @@ def safe_ele(page, selector: str, timeout: float = 10,
             ele = page.ele(selector, timeout=timeout)
             return ele
         except Exception as e:
-            if _is_refresh_error(e) and attempt < retries - 1:
+            if is_refresh_error(e) and attempt < retries - 1:
                 logger.debug(f"查找元素被页面刷新打断 (尝试 {attempt + 1}/{retries}): {selector}")
                 wait_page_stable(page, timeout=5)
                 time.sleep(retry_delay)
             else:
-                if _is_refresh_error(e):
+                if is_refresh_error(e):
                     logger.warning(f"查找元素因页面刷新失败 (已重试 {retries} 次): {selector}")
                     return None
                 raise
@@ -188,7 +208,7 @@ def safe_click(ele, retries: int = DEFAULT_RETRIES,
             current_ele.click()
             return True
         except Exception as e:
-            if _is_refresh_error(e) and attempt < retries - 1:
+            if is_refresh_error(e) and attempt < retries - 1:
                 logger.debug(f"点击被页面刷新打断 (尝试 {attempt + 1}/{retries})")
                 if page:
                     wait_page_stable(page, timeout=5)
@@ -201,7 +221,7 @@ def safe_click(ele, retries: int = DEFAULT_RETRIES,
                             continue
                 time.sleep(retry_delay)
             else:
-                if _is_refresh_error(e):
+                if is_refresh_error(e):
                     logger.warning(f"点击因页面刷新失败 (已重试 {retries} 次)")
                     return False
                 raise
@@ -238,7 +258,7 @@ def safe_input(ele, text: str, retries: int = DEFAULT_RETRIES,
             current_ele.input(text)
             return True
         except Exception as e:
-            if _is_refresh_error(e) and attempt < retries - 1:
+            if is_refresh_error(e) and attempt < retries - 1:
                 logger.debug(f"输入被页面刷新打断 (尝试 {attempt + 1}/{retries})")
                 if page:
                     wait_page_stable(page, timeout=5)
@@ -250,7 +270,7 @@ def safe_input(ele, text: str, retries: int = DEFAULT_RETRIES,
                             continue
                 time.sleep(retry_delay)
             else:
-                if _is_refresh_error(e):
+                if is_refresh_error(e):
                     logger.warning(f"输入因页面刷新失败 (已重试 {retries} 次)")
                     return False
                 raise
@@ -273,26 +293,56 @@ def _extract_selector(ele):
     return None
 
 
-def safe_url(page) -> str:
-    """安全读取 page.url — 自动处理页面刷新
+def safe_url(page, retries: int = DEFAULT_RETRIES,
+             retry_delay: float = DEFAULT_RETRY_DELAY) -> str:
+    """安全读取 page.url — 自动处理页面刷新 (带重试)
 
     DrissionPage 在页面刷新中访问 .url 可能抛 ElementLostError/ContextLostError,
-    本函数捕获后等待页面稳定再重试一次。
+    本函数捕获后等待页面稳定再重试。
 
     Args:
         page: DrissionPage 页面对象
+        retries: 最大重试次数
+        retry_delay: 重试间隔
 
     Returns:
         当前页面 URL
     """
-    try:
-        return page.url
-    except Exception as e:
-        if _is_refresh_error(e):
-            logger.debug("page.url 被页面刷新打断, 等待后重试")
-            wait_page_stable(page, timeout=5)
+    for attempt in range(retries):
+        try:
             return page.url
-        raise
+        except Exception as e:
+            if is_refresh_error(e) and attempt < retries - 1:
+                logger.debug(
+                    "safe_url: refresh error (attempt %d/%d), waiting...",
+                    attempt + 1, retries,
+                )
+                wait_page_stable(page, timeout=5)
+                time.sleep(retry_delay)
+                continue
+            raise
+    # 理论上不可达 (循环体必定 return 或 raise)
+    return page.url
+
+
+def safe_url_for_log(page, max_len: int = 100) -> str:
+    """读取 URL 用于日志/错误消息; 永不抛异常。
+
+    在 except 块或日志语句中使用, 避免 safe_url() 再次抛异常
+    导致原始错误上下文丢失。
+
+    Args:
+        page: DrissionPage 页面对象
+        max_len: URL 最大长度, 0 表示不截断
+
+    Returns:
+        URL 字符串, 或 "<url unavailable>"
+    """
+    try:
+        url = safe_url(page, retries=2)
+        return url[:max_len] if max_len else url
+    except Exception:
+        return "<url unavailable>"
 
 
 def retry_on_refresh(func: Optional[Callable[..., T]] = None, *,
@@ -316,7 +366,7 @@ def retry_on_refresh(func: Optional[Callable[..., T]] = None, *,
                 try:
                     return fn(*args, **kwargs)
                 except Exception as e:
-                    if _is_refresh_error(e) and attempt < retries - 1:
+                    if is_refresh_error(e) and attempt < retries - 1:
                         logger.info(
                             f"{fn.__name__} 被页面刷新打断 "
                             f"(尝试 {attempt + 1}/{retries}), "

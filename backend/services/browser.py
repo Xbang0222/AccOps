@@ -449,6 +449,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         try:
             page_text = page.html or ""
         except Exception:
+            logger.debug("page.html 读取失败, 作为空字符串处理", exc_info=True)
             page_text = ""
         if email.lower() in page_text.lower():
             logger.info(f"账号已登录 (session 有效), email={email}")
