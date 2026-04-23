@@ -311,7 +311,22 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 ### 启动项目
 
-**步骤 1 — 杀残留进程（必须先执行）：**
+**一键启动（推荐）：**
+
+```bash
+./start.sh        # 杀残留 → 启后端 → 启前端 → 健康检查
+./stop.sh         # 停止所有服务
+tail -f /tmp/accops-backend.log    # 查看后端日志
+tail -f /tmp/accops-frontend.log   # 查看前端日志
+```
+
+脚本位于项目根目录，会自动处理残留进程、`.browser_profiles` 排除、健康检查。
+
+---
+
+**手动启动（需要独立控制时）：**
+
+步骤 1 — 杀残留进程：
 
 ```bash
 pkill -9 -f "uvicorn app:app" 2>/dev/null; pkill -9 -f "run.py" 2>/dev/null; pkill -9 -f "node.*vite" 2>/dev/null; sleep 1
@@ -319,7 +334,7 @@ pkill -9 -f "uvicorn app:app" 2>/dev/null; pkill -9 -f "run.py" 2>/dev/null; pki
 
 > `lsof | xargs kill` 杀不干净 StatReload 子进程，**必须用 `pkill -f` 按进程名杀**。
 
-**步骤 2 — 启动后端（后台运行）：**
+步骤 2 — 启动后端：
 
 ```bash
 cd backend && uv run uvicorn app:app --host 127.0.0.1 --port 8000 --reload --reload-exclude ".browser_profiles"
@@ -328,13 +343,13 @@ cd backend && uv run uvicorn app:app --host 127.0.0.1 --port 8000 --reload --rel
 > ⚠️ 不要用 `uv run python run.py --reload`，StatReload 主进程和子进程竞争端口，被杀后容易残留。直接用 `uvicorn` 命令更可靠。
 > 必须加 `--reload-exclude ".browser_profiles"`，否则清理缓存时文件变化会触发 reload 导致 crash。
 
-**步骤 3 — 启动前端（后台运行）：**
+步骤 3 — 启动前端：
 
 ```bash
 cd frontend && pnpm dev
 ```
 
-**步骤 4 — 验证启动成功：**
+步骤 4 — 验证：
 
 ```bash
 curl -s http://localhost:8000/docs | head -5   # 后端：应返回 HTML
@@ -360,6 +375,8 @@ curl -s http://localhost:5173 | head -5        # 前端：应返回 HTML
 ### 停止服务
 
 ```bash
+./stop.sh
+# 或手动:
 pkill -9 -f "uvicorn app:app" 2>/dev/null; pkill -9 -f "node.*vite" 2>/dev/null
 ```
 
