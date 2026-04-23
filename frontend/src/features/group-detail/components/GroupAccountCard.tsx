@@ -5,7 +5,6 @@ import {
   ClockCircleOutlined,
   CopyOutlined,
   CrownOutlined,
-  DeleteOutlined,
   DownloadOutlined,
   FileTextOutlined,
   GoogleOutlined,
@@ -39,9 +38,7 @@ interface GroupAccountCardProps {
   isSelected: boolean
   isRunning: boolean
   isBrowserLoading: boolean
-  profileId?: number
   opState?: AccountOpState
-  onClearBrowserData: (accountId: number) => void
   onCopyOAuthJson: (accountId: number) => void
   onCopyText: (text: string, label: string) => void
   onCopyTOTP: (secret: string) => void
@@ -61,9 +58,7 @@ export function GroupAccountCard({
   isSelected,
   isRunning,
   isBrowserLoading,
-  profileId,
   opState,
-  onClearBrowserData,
   onCopyOAuthJson,
   onCopyText,
   onCopyTOTP,
@@ -197,6 +192,16 @@ export function GroupAccountCard({
                   style={{ padding: '0 4px' }}
                 />
               </Tooltip>
+              {account.totp_secret ? (
+                <Tooltip title="复制 2FA">
+                  <Button type="text" size="small" icon={<CopyOutlined style={{ color: '#52c41a' }} />} onClick={() => onCopyTOTP(account.totp_secret!)} style={{ padding: '0 4px' }} />
+                </Tooltip>
+              ) : null}
+              {account.password ? (
+                <Tooltip title="复制密码">
+                  <Button type="text" size="small" icon={<CopyOutlined style={{ color: '#faad14' }} />} onClick={() => onCopyText(account.password, '密码')} style={{ padding: '0 4px' }} />
+                </Tooltip>
+              ) : null}
               <Tooltip title="接受邀请">
                 <Button
                   type="text"
@@ -242,11 +247,6 @@ export function GroupAccountCard({
               {account.password ? (
                 <Tooltip title="复制密码">
                   <Button type="text" size="small" icon={<CopyOutlined style={{ color: '#faad14' }} />} onClick={() => onCopyText(account.password, '密码')} style={{ padding: '0 4px' }} />
-                </Tooltip>
-              ) : null}
-              {profileId ? (
-                <Tooltip title="清除浏览器数据">
-                  <Button type="text" size="small" disabled={isRunning} icon={<DeleteOutlined style={{ color: isRunning ? '#d9d9d9' : '#ff4d4f' }} />} onClick={() => onClearBrowserData(account.id)} style={{ padding: '0 4px' }} />
                 </Tooltip>
               ) : null}
               <Tooltip title="OAuth 授权">

@@ -1,4 +1,4 @@
-export type AutomationOperationRole = 'any' | 'owner' | 'member' | 'no-group'
+export type AutomationOperationRole = 'any' | 'owner' | 'no-group'
 
 export interface AutomationOperationField {
   name: string
@@ -6,7 +6,7 @@ export interface AutomationOperationField {
 }
 
 export interface AutomationOperationDefinition {
-  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'family-swap'
+  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-swap'
   label: string
   color: string
   needBrowser: boolean
@@ -61,14 +61,6 @@ export const FAMILY_AUTOMATION_OPERATIONS: AutomationOperationDefinition[] = [
     role: 'owner',
   },
   {
-    key: 'family-leave',
-    label: '退组',
-    color: '#fa8c16',
-    needBrowser: true,
-    danger: true,
-    role: 'member',
-  },
-  {
     key: 'family-swap',
     label: '换号',
     color: '#eb2f96',
@@ -83,7 +75,6 @@ export function getVisibleAutomationOperations(
 ): AutomationOperationDefinition[] {
   const hasGroup = Boolean(account.family_group_id)
   const isOwner = Boolean(account.is_family_owner)
-  const isMember = hasGroup && !isOwner
   const isFull = (account.family_member_count ?? 0) >= 6
 
   return FAMILY_AUTOMATION_OPERATIONS.filter((operation) => {
@@ -97,10 +88,6 @@ export function getVisibleAutomationOperations(
       }
 
       return !(isFull && operation.key === 'family-invite')
-    }
-
-    if (operation.role === 'member') {
-      return isMember
     }
 
     if (operation.role === 'no-group') {

@@ -1,6 +1,5 @@
 import {
   CheckCircleOutlined,
-  LogoutOutlined,
   SwapOutlined,
   SyncOutlined,
   TeamOutlined,
@@ -17,7 +16,6 @@ const OPERATION_ICON_MAP: Record<AutomationOperationDefinition['key'], ReactNode
   'family-invite': <UserAddOutlined />,
   'family-accept': <CheckCircleOutlined />,
   'family-remove': <UserDeleteOutlined />,
-  'family-leave': <LogoutOutlined />,
   'family-swap': <SwapOutlined />,
 }
 

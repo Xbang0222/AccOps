@@ -16,7 +16,7 @@ describe('getVisibleAutomationOperations', () => {
     ])
   })
 
-  it('允许管理员看到同步、邀请、移除和替换', () => {
+  it('允许管理员看到同步、邀请、移除和换号', () => {
     const operations = getVisibleAutomationOperations({
       family_group_id: 12,
       is_family_owner: true,
@@ -27,7 +27,7 @@ describe('getVisibleAutomationOperations', () => {
       'family-discover',
       'family-invite',
       'family-remove',
-      'replace',
+      'family-swap',
     ])
   })
 
@@ -41,13 +41,13 @@ describe('getVisibleAutomationOperations', () => {
     expect(operations.some((operation) => operation.key === 'family-invite')).toBe(false)
   })
 
-  it('只允许普通成员看到退组', () => {
+  it('普通成员没有可见的自动化操作', () => {
     const operations = getVisibleAutomationOperations({
       family_group_id: 12,
       is_family_owner: false,
       family_member_count: 4,
     })
 
-    expect(operations.map((operation) => operation.key)).toEqual(['family-leave'])
+    expect(operations.map((operation) => operation.key)).toEqual([])
   })
 })

@@ -1,8 +1,7 @@
-import { App, Modal } from 'antd'
+import { App } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
-  clearBrowserData,
   createBrowserProfile,
   discoverFamily,
   downloadOAuthCredential,
@@ -224,30 +223,6 @@ export function useGroupDetailController(groupId: number) {
 
     void handleLaunchBrowser(accountId)
   }, [automation, handleLaunchBrowser, handleStopBrowser])
-
-  const handleClearBrowserData = useCallback((accountId: number) => {
-    const profileId = profileMap[accountId]
-    if (!profileId) {
-      msg.error('未找到浏览器配置')
-      return
-    }
-
-    Modal.confirm({
-      title: '确认清除浏览器数据',
-      content: '此操作将删除该账号的所有浏览器数据（cookies、缓存等），但保留配置。确定继续？',
-      okText: '确认清除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await clearBrowserData(profileId)
-          msg.success('浏览器数据已清除')
-        } catch (error: unknown) {
-          msg.error(getErrorMessage(error, '清除失败'))
-        }
-      },
-    })
-  }, [msg, profileMap])
 
   const handleDiscover = useCallback(async (accountId: number) => {
     setOpStates((previous) => ({
@@ -531,7 +506,6 @@ export function useGroupDetailController(groupId: number) {
     handleBatchLaunch,
     handleBatchOAuth,
     handleBatchStop,
-    handleClearBrowserData,
     handleCopyOAuthJson,
     handleDownloadOAuth,
     handleEmailSearch,

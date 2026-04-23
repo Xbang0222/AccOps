@@ -52,9 +52,6 @@ export const stopBrowser = (id: number) =>
 export const getBrowserStatus = (id: number) =>
   client.get(`${BASE}/${id}/status`);
 
-export const clearBrowserData = (id: number) =>
-  client.delete(`${BASE}/${id}/data`);
-
 export interface StorageStats {
   total_bytes: number;
   profile_count: number;
