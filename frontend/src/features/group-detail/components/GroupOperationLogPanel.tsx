@@ -1,6 +1,6 @@
-import { Button, Flex, Tag, Typography } from 'antd'
+import { Flex, Tag, Typography } from 'antd'
 import { theme as antTheme } from 'antd'
-import { GoogleOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons'
+import { GoogleOutlined, LoadingOutlined } from '@ant-design/icons'
 
 import type { Account } from '@/types'
 import type { AccountOpState } from '../utils'
@@ -10,13 +10,11 @@ const { Text } = Typography
 interface GroupOperationLogPanelProps {
   account: Account | null
   opState: AccountOpState | null
-  onCancel: () => void
 }
 
 export function GroupOperationLogPanel({
   account,
   opState,
-  onCancel,
 }: GroupOperationLogPanelProps) {
   const { token } = antTheme.useToken()
   return (
@@ -37,11 +35,6 @@ export function GroupOperationLogPanel({
             <GoogleOutlined style={{ color: '#4285f4', fontSize: 14 }} />
             <Text strong style={{ fontSize: 13 }}>{account.email}</Text>
             {opState?.runningOpKey ? <Tag color="processing" style={{ margin: 0 }}>{opState.runningOpKey}</Tag> : null}
-            {opState?.runningOpKey ? (
-              <Button size="small" danger icon={<StopOutlined />} onClick={onCancel}>
-                取消
-              </Button>
-            ) : null}
           </Flex>
         ) : (
           <Text type="secondary" style={{ fontSize: 12 }}>点击左侧卡片查看日志</Text>
