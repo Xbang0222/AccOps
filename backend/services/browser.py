@@ -213,7 +213,7 @@ class BrowserManager:
         priorities = {}
         for c in instance.page.cookies(all_domains=True):
             if isinstance(c, dict):
-                name, value, domain = c.get("name", ""), c.get("value", ""), c.get("domain", "")
+                name, value, domain = c.get("name") or "", c.get("value") or "", c.get("domain") or ""
             else:
                 name, value, domain = str(c.name), str(c.value), str(getattr(c, "domain", ""))
 

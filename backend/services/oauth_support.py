@@ -119,7 +119,7 @@ def fetch_project_id(access_token: str) -> str:
         return project_id
 
     tier_id = "legacy-tier"
-    for tier in data.get("allowedTiers", []):
+    for tier in (data.get("allowedTiers") or []):
         if isinstance(tier, dict) and tier.get("isDefault"):
             default_tier_id = tier.get("id", "").strip()
             if default_tier_id:
@@ -201,15 +201,15 @@ def extract_validation_url(error_text: str) -> Optional[str]:
     try:
         data = json.loads(error_text)
         error_obj = data[0] if isinstance(data, list) else data
-        details = error_obj.get("error", {}).get("details", [])
+        details = error_obj.get("error", {}).get("details") or []
         for detail in details:
-            metadata = detail.get("metadata", {})
+            metadata = detail.get("metadata") or {}
             validation_url = metadata.get("validation_url")
             if validation_url:
                 return validation_url
 
-            for link in detail.get("links", []):
-                link_url = link.get("url", "")
+            for link in (detail.get("links") or []):
+                link_url = link.get("url") or ""
                 if "accounts.google.com" in link_url:
                     return link_url
     except Exception:

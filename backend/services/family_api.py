@@ -341,7 +341,15 @@ class FamilyAPI:
             except (IndexError, TypeError):
                 pass
 
-        return {"success": r["status_code"] == 200, "invitation_id": invitation_id}
+        if r["status_code"] != 200:
+            return {"success": False, "invitation_id": None,
+                    "error": f"HTTP {r['status_code']}"}
+        if not invitation_id:
+            logger.warning(f"[send_invite] HTTP 200 但无 invitation_id, parsed={r['parsed']}")
+            return {"success": False, "invitation_id": None,
+                    "error": "Google 返回 200 但未生成邀请 (cookies 失效/配额超限/对方已在组/家庭组已满)"}
+
+        return {"success": True, "invitation_id": invitation_id}
 
     def accept_invite(self) -> dict:
         """接受待处理的家庭组邀请 (SZ903d)"""

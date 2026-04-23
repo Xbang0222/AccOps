@@ -105,7 +105,8 @@ def send_family_invite_sync(page, invite_email: str, on_step=None, cancel_token=
             if result["success"]:
                 return tracker.result(True, f"邀请已发送: {invite_email}")
             else:
-                return tracker.result(False, f"邀请发送失败: {invite_email}", step="invite")
+                err = result.get("error", "未知原因")
+                return tracker.result(False, f"邀请发送失败: {invite_email} ({err})", step="invite")
     except (TokenError, RPCError) as e:
         return tracker.result(False, str(e), step="rpc")
     except Exception as e:
