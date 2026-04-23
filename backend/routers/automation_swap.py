@@ -85,30 +85,6 @@ def _swap_resolve_remove_emails(account_id: int) -> tuple[list[str], int | None]
         return [a.email for a in sub_accounts], group_id
 
 
-def _swap_select_from_pool(account_id: int, new_count: int) -> list[dict]:
-    """同步: 从号池选取可用子号。"""
-    from services.account import AccountService
-    pool_gid = None
-    with get_db_session() as db:
-        main_account = db.query(Account).filter(Account.id == account_id).first()
-        if main_account and main_account.family_group_id:
-            pool_gid = main_account.family_group_id
-
-    with get_db_session() as db:
-        svc = AccountService(db)
-        available = svc.get_available(limit=new_count, pool_group_id=pool_gid) if pool_gid else []
-        if len(available) < new_count:
-            remaining = new_count - len(available)
-            existing_ids = {a["id"] for a in available}
-            global_available = svc.get_available(limit=remaining)
-            for a in global_available:
-                if a["id"] not in existing_ids:
-                    available.append(a)
-                    if len(available) >= new_count:
-                        break
-    return available
-
-
 def _swap_batch_load_sub_accounts(emails: list[str]) -> dict[str, dict]:
     """同步: 批量加载子号信息，返回 {email_lower: info_dict}。"""
     result: dict[str, dict] = {}
@@ -534,22 +510,8 @@ async def _handle_family_swap(
         actual_count = len(selected_emails)
         await ws.send_json({"type": "step", "name": PHASE_INVITE_NEW, "status": "info", "message": f"指定 {actual_count} 个账号"})
     else:
-        if new_count <= 0:
-            new_count = len(remove_emails)
-        await ws.send_json({"type": "step", "name": PHASE_INVITE_NEW, "status": "info", "message": f"从号池选取 {new_count} 个"})
-
-        available = await asyncio.get_event_loop().run_in_executor(
-            None, _swap_select_from_pool, account_id, new_count,
-        )
-
-        if not available:
-            await ws.send_json({"type": "result", "success": False, "message": "没有可用的子号", "duration_ms": 0})
-            return True
-
-        selected_emails = [a["email"] for a in available]
-        actual_count = len(selected_emails)
-        if actual_count < new_count:
-            await ws.send_json({"type": "step", "name": "可用数量不足", "status": "info", "message": f"需要 {new_count}, 可用 {actual_count}"})
+        await ws.send_json({"type": "result", "success": False, "message": "请指定新成员邮箱", "duration_ms": 0})
+        return True
 
     await ws.send_json({"type": "step", "name": "选号完成", "status": "ok", "message": f"已选取 {actual_count} 个: {', '.join(selected_emails)}"})
 

@@ -1,4 +1,4 @@
-import { Button, Input, Modal, Radio, Select, Space, Typography } from 'antd'
+import { Button, Input, Modal, Select, Space, Typography } from 'antd'
 
 import type { AutomationOperationDefinition } from '@/features/automation/operationMeta'
 import type { GroupMemberOption } from '../utils'
@@ -13,13 +13,11 @@ interface GroupOperationModalProps {
   memberOptions: GroupMemberOption[]
   selectedEmails: string[]
   swapManualEmails: string[]
-  swapMode: 'pool' | 'manual'
   onAvailableAccountSearch: (value: string) => void
   onCancel: () => void
   onChangeFormValue: (name: string, value: string) => void
   onChangeSelectedEmails: (emails: string[]) => void
   onChangeSwapManualEmails: (emails: string[]) => void
-  onChangeSwapMode: (mode: 'pool' | 'manual') => void
   onOk: () => void
   onSearchEmails: (value: string) => void
   onSelectAllMembers: () => void
@@ -33,13 +31,11 @@ export function GroupOperationModal({
   memberOptions,
   selectedEmails,
   swapManualEmails,
-  swapMode,
   onAvailableAccountSearch,
   onCancel,
   onChangeFormValue,
   onChangeSelectedEmails,
   onChangeSwapManualEmails,
-  onChangeSwapMode,
   onOk,
   onSearchEmails,
   onSelectAllMembers,
@@ -117,42 +113,22 @@ export function GroupOperationModal({
             </div>
             <div>
               <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-                替换方式:
+                新成员:
               </Text>
-              <Radio.Group
-                value={swapMode}
-                onChange={(e) => onChangeSwapMode(e.target.value)}
-                style={{ marginBottom: 8 }}
-              >
-                <Radio value="pool">号池自动选取</Radio>
-                <Radio value="manual">手动指定</Radio>
-              </Radio.Group>
-
-              {swapMode === 'pool' ? (
-                <Input
-                  type="number"
-                  min={1}
-                  max={5}
-                  placeholder="新子号数量（默认与移除数一致）"
-                  value={formValues['new_count'] || ''}
-                  onChange={(event) => onChangeFormValue('new_count', event.target.value)}
-                />
-              ) : (
-                <Select
-                  mode="tags"
-                  style={{ width: '100%' }}
-                  placeholder="搜索并选择账号，或直接输入邮箱回车添加"
-                  value={swapManualEmails}
-                  onChange={onChangeSwapManualEmails}
-                  onSearch={onAvailableAccountSearch}
-                  options={availableAccountOptions}
-                  loading={availableAccountsLoading}
-                  filterOption={false}
-                  tokenSeparators={[',', ';', '\n', '\t']}
-                  showSearch
-                  notFoundContent={availableAccountsLoading ? '搜索中...' : '无匹配账号，可直接输入邮箱回车添加'}
-                />
-              )}
+              <Select
+                mode="tags"
+                style={{ width: '100%' }}
+                placeholder="搜索并选择账号，或直接输入邮箱回车添加"
+                value={swapManualEmails}
+                onChange={onChangeSwapManualEmails}
+                onSearch={onAvailableAccountSearch}
+                options={availableAccountOptions}
+                loading={availableAccountsLoading}
+                filterOption={false}
+                tokenSeparators={[',', ';', '\n', '\t']}
+                showSearch
+                notFoundContent={availableAccountsLoading ? '搜索中...' : '无匹配账号，可直接输入邮箱回车添加'}
+              />
             </div>
             <Text type="secondary" style={{ fontSize: 12 }}>
               换号完成后会自动执行同步验证，确保数据库与实际状态一致

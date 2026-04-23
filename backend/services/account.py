@@ -2,7 +2,6 @@
 import json
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
-from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 from models.orm import Account
@@ -44,7 +43,6 @@ class AccountService:
             "totp_secret": account.totp_secret or "",
             "group_name": account.group_name or "",
             "family_group_id": account.family_group_id,
-            "pool_group_id": account.pool_group_id,
             "is_family_owner": is_family_owner,
             "is_family_pending": bool(account.is_family_pending),
             "family_member_count": family_member_count,
@@ -118,38 +116,17 @@ class AccountService:
 
         return [self._to_dict(row, _group_cache=group_cache) for row in rows], total
 
-    def get_available(self, search: str = "", limit: int = 200, pool_group_id: int = None) -> List[Dict]:
-        """获取可邀请的账号：未在家庭组 + 未废弃/不可用 + 使用次数未满 + 当日有效
-
-        如果指定 pool_group_id，只返回该号池的账号。
-        """
-        from core.constants import POOL_MAX_USE_COUNT
-        beijing_tz = ZoneInfo("Asia/Shanghai")
-        today_beijing = datetime.now(beijing_tz).date()
-        today_start = datetime.combine(today_beijing, datetime.min.time()).replace(tzinfo=beijing_tz)
-
-        # 公共过滤: 未在家庭组 + 状态正常 + 使用次数未满 + 使用日期是今天（或从未使用）
+    def get_available(self, search: str = "", limit: int = 200) -> List[Dict]:
+        """获取可邀请的账号：未在家庭组 + 未废弃/不可用"""
         base_filters = [
             Account.family_group_id.is_(None),
             (Account.pool_status.is_(None)) | (Account.pool_status == ""),
-            (Account.pool_use_count.is_(None)) | (Account.pool_use_count < POOL_MAX_USE_COUNT),
-            (Account.pool_last_used_at.is_(None)) | (Account.pool_last_used_at >= today_start),
         ]
 
-        if pool_group_id is not None:
-            query = self.db.query(Account.id, Account.email).filter(
-                Account.pool_group_id == pool_group_id,
-                *base_filters,
-            )
-        else:
-            query = self.db.query(Account.id, Account.email).filter(
-                Account.pool_group_id.is_(None),
-                *base_filters,
-            )
+        query = self.db.query(Account.id, Account.email).filter(*base_filters)
         if search:
             query = query.filter(Account.email.ilike(f"%{search}%"))
-        # 优先选未用过的号
-        query = query.order_by(Account.pool_use_count.asc(), Account.email).limit(limit)
+        query = query.order_by(Account.email).limit(limit)
         return [{"id": row.id, "email": row.email} for row in query.all()]
 
     def get_by_id(self, account_id: int) -> Optional[Dict]:

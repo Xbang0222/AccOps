@@ -5,14 +5,12 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Callable, Iterator, Optional
-from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
 from core.constants import (
     ACTION_FAMILY_ACCEPT, ACTION_FAMILY_CREATE, ACTION_FAMILY_LEAVE,
     ACTION_FAMILY_REMOVE, FAMILY_MAX_MEMBERS,
-    POOL_MAX_USE_COUNT, POOL_STATUS_RETIRED,
 )
 from models.database import get_db_session
 from models.orm import Account, Group
@@ -124,11 +122,6 @@ def _sync_accepted_group(db: Session, account: Account, extra: dict) -> None:
             logger.info("[sync_group] 已将 %s 加入分组 #%s", account.email, joined_group_id)
 
     if joined_group_id:
-        # 递增全局使用次数（接受邀请成功算一次）
-        now = datetime.now(timezone.utc)
-        account.pool_use_count = (account.pool_use_count or 0) + 1
-        account.pool_last_used_at = now  # 记录使用时间，用于隔天判断
-        logger.info("[sync_group] %s pool_use_count → %s", account.email, account.pool_use_count)
         _inherit_owner_subscription(db, account, joined_group_id)
 
 
@@ -270,13 +263,8 @@ def _sync_member_discover(db: Session, account: Account, discover_result) -> Non
             if email_prefix in manager_name_lower or manager_name_lower in candidate.email.lower():
                 group = db.query(Group).filter(Group.id == candidate.family_group_id).first()
                 if group and group.main_account_id == candidate.id:
-                    now = datetime.now(timezone.utc)
                     account.family_group_id = group.id
-                    # 之前没记录 → 补记录使用
-                    if not account.pool_last_used_at:
-                        account.pool_use_count = (account.pool_use_count or 0) + 1
-                        account.pool_last_used_at = now
-                    account.updated_at = now
+                    account.updated_at = datetime.now(timezone.utc)
                     logger.info("[discover_sync] 成员 %s 加入管理员 %s 的分组 #%s", account.email, candidate.email, group.id)
                     return
 
@@ -330,28 +318,16 @@ def _upsert_discovered_member(db: Session, group_id: int, email: str, is_pending
     account = db.query(Account).filter(Account.email.ilike(email)).first()
     if not account:
         account = Account(email=email, family_group_id=group_id, is_family_pending=is_pending)
-        # 非 pending 的新成员 → 记录使用
-        if not is_pending:
-            account.pool_use_count = 1
-            account.pool_last_used_at = now
         db.add(account)
         logger.info("[discover_sync] 新建成员账号 %s 并关联到分组 #%s", email, group_id)
         return
 
     changed = False
-    newly_joined = False
     if account.family_group_id != group_id:
-        newly_joined = account.family_group_id is None
         account.family_group_id = group_id
         changed = True
     if account.is_family_pending != is_pending:
         account.is_family_pending = is_pending
-        changed = True
-
-    # 首次加入分组且非 pending、之前没记录 → 补记录使用
-    if newly_joined and not is_pending and not account.pool_last_used_at:
-        account.pool_use_count = (account.pool_use_count or 0) + 1
-        account.pool_last_used_at = now
         changed = True
 
     if changed:
@@ -361,33 +337,9 @@ def _upsert_discovered_member(db: Session, group_id: int, email: str, is_pending
 
 def clear_account_family_state(account: Account) -> None:
     now = datetime.now(timezone.utc)
-    # 只有实际加入过家庭组的账号（非 pending）才标记退出时间 + 自动入池
     if account.family_group_id and not account.is_family_pending:
         account.retired_at = now
-        # 自动入池: 如果没有手动绑定号池，绑定到原分组
-        if not account.pool_group_id:
-            account.pool_group_id = account.family_group_id
-
-        use_count = account.pool_use_count or 0
-
-        # 隔天判断: 如果上次使用不是今天 → 直接废弃
-        beijing_tz = ZoneInfo("Asia/Shanghai")
-        today_beijing = datetime.now(beijing_tz).date()
-        if account.pool_last_used_at:
-            last_used_date = account.pool_last_used_at.replace(tzinfo=timezone.utc).astimezone(beijing_tz).date()
-            if last_used_date < today_beijing:
-                account.pool_status = POOL_STATUS_RETIRED
-                account.pool_group_id = None
-        else:
-            # pool_last_used_at 未记录（历史数据等极端情况）
-            # 无法判断当天可复用，保守标记为废弃
-            account.pool_status = POOL_STATUS_RETIRED
-            account.pool_group_id = None
-
-        # 用完 2 次 → 标记废弃 + 移出号池
-        if use_count >= POOL_MAX_USE_COUNT:
-            account.pool_status = POOL_STATUS_RETIRED
-            account.pool_group_id = None
+        account.pool_status = "retired"
     account.family_group_id = None
     account.is_family_pending = False
     account.subscription_status = ""

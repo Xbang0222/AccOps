@@ -13,11 +13,9 @@ export function useSwapOperation({
   memberOptions,
   msg,
 }: UseSwapOperationOptions) {
-  const [swapMode, setSwapMode] = useState<'pool' | 'manual'>('pool')
   const [swapManualEmails, setSwapManualEmails] = useState<string[]>([])
 
   const resetSwapState = useCallback(() => {
-    setSwapMode('pool')
     setSwapManualEmails([])
   }, [])
 
@@ -28,35 +26,25 @@ export function useSwapOperation({
   const executeSwap = useCallback((
     accountId: number,
     selectedEmails: string[],
-    formValues: Record<string, string>,
   ) => {
     const extra: Record<string, string> = {}
     if (selectedEmails.length > 0) {
       extra.remove_emails = selectedEmails.join(',')
     }
-    if (swapMode === 'manual') {
-      if (swapManualEmails.length === 0) {
-        msg.warning('请指定至少一个新成员')
-        return false
-      }
-      extra.specific_emails = swapManualEmails.join(',')
-    } else {
-      const newCount = parseInt(formValues['new_count'] || '0', 10)
-      if (newCount > 0) {
-        extra.new_count = String(newCount)
-      }
+    if (swapManualEmails.length === 0) {
+      msg.warning('请指定至少一个新成员')
+      return false
     }
+    extra.specific_emails = swapManualEmails.join(',')
     executeViaWs(accountId, 'family-swap', extra, 'family-swap')
     return true
-  }, [executeViaWs, msg, swapManualEmails, swapMode])
+  }, [executeViaWs, msg, swapManualEmails])
 
   return {
     executeSwap,
     handleSelectAllMembers,
     resetSwapState,
     setSwapManualEmails,
-    setSwapMode,
     swapManualEmails,
-    swapMode,
   }
 }

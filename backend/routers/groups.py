@@ -1,7 +1,6 @@
-"""分组路由 - 分组 CRUD、成员管理、号池管理"""
+"""分组路由 - 分组 CRUD、成员管理"""
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel
-from typing import List
+from models.schemas import GroupCreate, GroupUpdate
 
 from deps import verify_token, get_group_service
 from models.schemas import GroupCreate, GroupUpdate
@@ -101,67 +100,3 @@ def set_main_account(
         return {"message": "主号设置成功"}
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-
-# ── 号池管理 ──
-
-
-class PoolAccountIds(BaseModel):
-    account_ids: List[int]
-
-
-@router.get("/{group_id}/pool")
-def get_pool_accounts(
-    group_id: int,
-    svc: GroupService = Depends(get_group_service),
-):
-    """获取分组号池中的可用账号"""
-    accounts = svc.get_pool_accounts(group_id)
-    return {"accounts": accounts}
-
-
-@router.post("/{group_id}/pool")
-def add_to_pool(
-    group_id: int,
-    data: PoolAccountIds,
-    svc: GroupService = Depends(get_group_service),
-):
-    """将账号批量添加到分组号池"""
-    count = svc.add_to_pool(group_id, data.account_ids)
-    return {"message": f"已添加 {count} 个账号到号池"}
-
-
-@router.delete("/{group_id}/pool")
-def remove_from_pool(
-    group_id: int,
-    data: PoolAccountIds,
-    svc: GroupService = Depends(get_group_service),
-):
-    """将账号批量从号池移除"""
-    count = svc.remove_from_pool(group_id, data.account_ids)
-    return {"message": f"已从号池移除 {count} 个账号"}
-
-
-# ── 号池状态标记 ──
-
-
-@router.post("/pool/mark-unusable/{account_id}")
-def mark_pool_unusable(
-    account_id: int,
-    svc: GroupService = Depends(get_group_service),
-):
-    """标记号池账号为「无法使用」（地区限制等原因）"""
-    if not svc.mark_pool_unusable(account_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="账号不存在")
-    return {"message": "已标记为无法使用"}
-
-
-@router.post("/pool/clear-status/{account_id}")
-def clear_pool_status(
-    account_id: int,
-    svc: GroupService = Depends(get_group_service),
-):
-    """清除号池状态标记，恢复正常"""
-    if not svc.clear_pool_status(account_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="账号不存在")
-    return {"message": "已恢复正常状态"}

@@ -19,7 +19,6 @@ const OPERATION_ICON_MAP: Record<AutomationOperationDefinition['key'], ReactNode
   'family-remove': <UserDeleteOutlined />,
   'family-leave': <LogoutOutlined />,
   'family-swap': <SwapOutlined />,
-  'pool-batch-login': <SyncOutlined />,
 }
 
 export function getAutomationOperationIcon(key: AutomationOperationDefinition['key']): ReactNode {

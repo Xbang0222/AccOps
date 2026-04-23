@@ -1,13 +1,12 @@
 """分组服务 - 处理分组 CRUD 和成员管理"""
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
-from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 from models.orm import Group, Account
 from services.account import AccountService
 from services.group_sync import clear_account_family_state
-from core.constants import FAMILY_MAX_MEMBERS, POOL_MAX_USE_COUNT, POOL_STATUS_RETIRED
+from core.constants import FAMILY_MAX_MEMBERS
 
 
 class GroupService:
@@ -159,8 +158,6 @@ class GroupService:
                 # 已在其他分组 → 先走退出逻辑
                 if account.family_group_id is not None:
                     clear_account_family_state(account)
-                account.pool_use_count = (account.pool_use_count or 0) + 1
-                account.pool_last_used_at = now
             account.family_group_id = group_id
             account.updated_at = now
             self.db.commit()
@@ -181,81 +178,3 @@ class GroupService:
             group.main_account_id = account_id
             group.updated_at = datetime.now(timezone.utc)
             self.db.commit()
-
-    # ── 号池管理 ──
-
-    def get_pool_accounts(self, group_id: int) -> List[Dict]:
-        """获取分组号池中的账号（不在家庭组中的备用号），附带号池状态
-
-        注意: 此方法是只读的，不修改数据库。过期状态通过内存计算返回给前端。
-        """
-        rows = (
-            self.db.query(Account)
-            .filter(
-                Account.pool_group_id == group_id,
-                Account.family_group_id.is_(None),
-            )
-            .order_by(Account.pool_use_count.asc(), Account.email)
-            .all()
-        )
-        beijing_tz = ZoneInfo("Asia/Shanghai")
-        today_beijing = datetime.now(beijing_tz).date()
-        result = []
-        for r in rows:
-            d = self.account_service._to_dict(r)
-            use_count = r.pool_use_count or 0
-            pool_status = r.pool_status or ""
-            # 惰性计算: 上次使用不是今天 → 显示为废弃
-            if pool_status == "" and use_count >= 1 and r.pool_last_used_at:
-                last_used_date = r.pool_last_used_at.replace(tzinfo=timezone.utc).astimezone(beijing_tz).date()
-                if last_used_date < today_beijing:
-                    pool_status = POOL_STATUS_RETIRED
-            d["pool_status"] = pool_status
-            result.append(d)
-        return result
-
-    def add_to_pool(self, group_id: int, account_ids: List[int]) -> int:
-        """将账号批量添加到号池"""
-        count = 0
-        for aid in account_ids:
-            account = self.db.query(Account).get(aid)
-            if account and account.pool_group_id != group_id:
-                account.pool_group_id = group_id
-                account.updated_at = datetime.now(timezone.utc)
-                count += 1
-        self.db.commit()
-        return count
-
-    def remove_from_pool(self, group_id: int, account_ids: List[int]) -> int:
-        """将账号批量从号池移除"""
-        count = 0
-        for aid in account_ids:
-            account = self.db.query(Account).get(aid)
-            if account and account.pool_group_id == group_id:
-                account.pool_group_id = None
-                account.updated_at = datetime.now(timezone.utc)
-                count += 1
-        self.db.commit()
-        return count
-
-    def mark_pool_unusable(self, account_id: int) -> bool:
-        """标记账号为「无法使用」（地区限制等）。返回 True 表示成功。"""
-        from core.constants import POOL_STATUS_UNUSABLE
-        account = self.db.query(Account).get(account_id)
-        if not account:
-            return False
-        account.pool_status = POOL_STATUS_UNUSABLE
-        account.pool_group_id = None  # 移出号池
-        account.updated_at = datetime.now(timezone.utc)
-        self.db.commit()
-        return True
-
-    def clear_pool_status(self, account_id: int) -> bool:
-        """清除号池状态标记，恢复正常。返回 True 表示成功。"""
-        account = self.db.query(Account).get(account_id)
-        if not account:
-            return False
-        account.pool_status = ""
-        account.updated_at = datetime.now(timezone.utc)
-        self.db.commit()
-        return True

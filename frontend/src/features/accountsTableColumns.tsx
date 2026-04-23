@@ -10,9 +10,7 @@ import {
   LockOutlined,
   LoginOutlined,
   PoweroffOutlined,
-  StopOutlined,
   TeamOutlined,
-  UndoOutlined,
   UserOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons'
@@ -32,8 +30,6 @@ interface CreateAccountTableColumnsOptions {
   onDelete: (id: number) => void
   onEdit: (account: Account) => void
   onLaunchAndLogin: (account: Account) => void
-  onMarkUnusable: (id: number) => void
-  onClearPoolStatus: (id: number) => void
   onStopBrowser: (accountId: number) => void
 }
 
@@ -47,8 +43,6 @@ export function createAccountTableColumns({
   onDelete,
   onEdit,
   onLaunchAndLogin,
-  onMarkUnusable,
-  onClearPoolStatus,
   onStopBrowser,
 }: CreateAccountTableColumnsOptions): ColumnsType<Account> {
   return [
@@ -127,26 +121,13 @@ export function createAccountTableColumns({
       width: 100,
       render: (_: unknown, record: Account) => {
         const poolStatus = record.pool_status || ''
-        const useCount = record.pool_use_count ?? 0
-
         if (poolStatus === 'unusable') {
           return <Tag color="red" style={{ margin: 0, fontSize: 11 }}>无法使用</Tag>
         }
-        if (poolStatus === 'retired' || useCount >= 2) {
+        if (poolStatus === 'retired') {
           return <Tag color="default" style={{ margin: 0, fontSize: 11 }}>废弃号</Tag>
         }
-        if (useCount === 0) return null
-        // 有使用记录 → 检查上次使用是不是今天（北京时间）
-        const lastUsed = record.pool_last_used_at
-        if (!lastUsed) {
-          return <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>已用 {useCount}/2</Tag>
-        }
-        const lastUsedBeijing = new Date(lastUsed).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
-        const todayBeijing = new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
-        if (lastUsedBeijing === todayBeijing) {
-          return <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>今日可复用 ({useCount}/2)</Tag>
-        }
-        return <Tag color="default" style={{ margin: 0, fontSize: 11 }}>废弃号</Tag>
+        return null
       },
     },
     {
@@ -212,15 +193,6 @@ export function createAccountTableColumns({
             <Tooltip title="编辑">
               <Button type="text" size="small" icon={<EditOutlined style={{ color: '#8c8c8c' }} />} onClick={() => onEdit(record)} />
             </Tooltip>
-            {(record.pool_status === 'unusable' || record.pool_status === 'retired') ? (
-              <Tooltip title="恢复正常">
-                <Button type="text" size="small" icon={<UndoOutlined style={{ color: '#52c41a' }} />} onClick={() => onClearPoolStatus(record.id)} />
-              </Tooltip>
-            ) : (
-              <Tooltip title="标记无法使用">
-                <Button type="text" size="small" icon={<StopOutlined style={{ color: '#ff4d4f', opacity: 0.6 }} />} onClick={() => onMarkUnusable(record.id)} />
-              </Tooltip>
-            )}
             <Tooltip title="删除">
               <Button type="text" size="small" icon={<DeleteOutlined style={{ color: '#ff4d4f' }} />} onClick={() => onDelete(record.id)} />
             </Tooltip>

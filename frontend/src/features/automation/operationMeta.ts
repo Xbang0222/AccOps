@@ -6,7 +6,7 @@ export interface AutomationOperationField {
 }
 
 export interface AutomationOperationDefinition {
-  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'family-swap' | 'pool-batch-login'
+  key: 'family-discover' | 'family-create' | 'family-invite' | 'family-accept' | 'family-remove' | 'family-leave' | 'family-swap'
   label: string
   color: string
   needBrowser: boolean

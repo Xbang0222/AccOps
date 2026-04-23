@@ -29,22 +29,3 @@ export const removeAccountFromGroup = (accountId: number) =>
 
 export const setMainAccount = (groupId: number, accountId: number) =>
   client.put<{ message: string }>(`${API_PREFIX}/groups/${groupId}/main-account/${accountId}`);
-
-// ── 号池管理 ──
-
-export const getPoolAccounts = (groupId: number) =>
-  client.get<{ accounts: import('@/types').Account[] }>(`${API_PREFIX}/groups/${groupId}/pool`);
-
-export const addToPool = (groupId: number, accountIds: number[]) =>
-  client.post<{ message: string }>(`${API_PREFIX}/groups/${groupId}/pool`, { account_ids: accountIds });
-
-export const removeFromPool = (groupId: number, accountIds: number[]) =>
-  client.delete<{ message: string }>(`${API_PREFIX}/groups/${groupId}/pool`, { data: { account_ids: accountIds } });
-
-// ── 号池状态标记 ──
-
-export const markPoolUnusable = (accountId: number) =>
-  client.post<{ message: string }>(`${API_PREFIX}/groups/pool/mark-unusable/${accountId}`);
-
-export const clearPoolStatus = (accountId: number) =>
-  client.post<{ message: string }>(`${API_PREFIX}/groups/pool/clear-status/${accountId}`);

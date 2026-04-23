@@ -35,7 +35,6 @@ from core.constants import (
     ACTION_FAMILY_BATCH_INVITE,
     ACTION_FAMILY_BATCH_REMOVE,
     ACTION_FAMILY_SWAP,
-    ACTION_POOL_BATCH_LOGIN,
     ACTION_OAUTH,
     ACTION_PHONE_VERIFY,
 )
@@ -105,156 +104,6 @@ async def _run_batch_operation(
             "duration_ms": 0,
         })
 
-    return True
-
-
-async def _handle_pool_batch_login(
-    ws: WebSocket,
-    msg_queue: queue.Queue,
-    cancel_token: CancellationToken,
-    group_id: int,
-) -> bool:
-    """批量登录号池中没有 cookies 的账号：启动浏览器 → 登录 → 保存 cookies → 关闭浏览器。"""
-    # 查找号池中没有 cookies 的账号
-    accounts_to_login = []
-    with get_db_session() as db:
-        rows = (
-            db.query(Account)
-            .filter(
-                Account.pool_group_id == group_id,
-                Account.family_group_id.is_(None),
-                (Account.cookies_json.is_(None)) | (Account.cookies_json == ""),
-            )
-            .order_by(Account.email)
-            .all()
-        )
-        for row in rows:
-            accounts_to_login.append({
-                "id": row.id,
-                "email": row.email,
-                "password": decrypt_field(row.password),
-                "totp_secret": decrypt_field(row.totp_secret),
-                "recovery_email": decrypt_field(row.recovery_email),
-                "notes": row.notes or "",
-            })
-
-    if not accounts_to_login:
-        await ws.send_json({"type": "result", "success": True, "message": "号池中所有账号都已有 cookies，无需登录", "duration_ms": 0})
-        return True
-
-    total = len(accounts_to_login)
-    await ws.send_json({"type": "step", "name": "批量登录", "status": "info", "message": f"共 {total} 个账号需要并发登录"})
-
-    success_count = 0
-    fail_list: list[str] = []
-
-    # --- 单个账号的完整登录流程 (启动浏览器 → 登录 → 保存 cookies → 关闭) ---
-    async def _login_one(i: int, acct: dict) -> bool:
-        """返回 True 表示成功"""
-        email = acct["email"]
-        step = _create_step_handler(msg_queue, i * 100)
-        step({"type": "step", "name": f"登录 {email}", "status": "running", "message": f"({i+1}/{total})"})
-
-        if cancel_token.is_cancelled:
-            return False
-
-        # 获取或创建浏览器配置
-        profile_id = None
-        with get_db_session() as db:
-            profile = db.query(BrowserProfile).filter(BrowserProfile.account_id == acct["id"]).first()
-            if profile:
-                profile_id = profile.id
-
-        if not profile_id:
-            try:
-                with get_db_session() as db:
-                    bp = BrowserProfile(name=email, account_id=acct["id"])
-                    db.add(bp)
-                    db.commit()
-                    db.refresh(bp)
-                    profile_id = bp.id
-            except Exception as exc:
-                fail_list.append(f"{email}: 创建浏览器配置失败 {exc}")
-                return False
-
-        # 启动浏览器
-        try:
-            if not browser_manager.is_running(profile_id):
-                with get_db_session() as db:
-                    from sqlalchemy.orm import joinedload
-                    fresh_profile = (
-                        db.query(BrowserProfile)
-                        .options(joinedload(BrowserProfile.account))
-                        .filter(BrowserProfile.id == profile_id)
-                        .first()
-                    )
-                    _ = fresh_profile.account
-                    await browser_manager.launch(fresh_profile)
-        except Exception as exc:
-            fail_list.append(f"{email}: 启动浏览器失败 {exc}")
-            return False
-
-        # 登录
-        try:
-            from services.verification import extract_verification_link
-            verification_url = extract_verification_link(acct["notes"]) or ""
-
-            result = await run_auto_login(
-                profile_id, email, acct["password"], acct["totp_secret"],
-                acct["recovery_email"], verification_url,
-                on_step=step, cancel_token=cancel_token,
-            )
-            if result and result.success:
-                save_browser_cookies(acct["id"], profile_id)
-                step({"type": "step", "name": f"登录 {email}", "status": "ok", "message": "已保存 cookies"})
-                return True
-            else:
-                fail_list.append(f"{email}: {result.message if result else '未知错误'}")
-                return False
-        except Exception as exc:
-            fail_list.append(f"{email}: {exc}")
-            return False
-        finally:
-            # 关闭浏览器
-            try:
-                await browser_manager.stop(profile_id)
-            except Exception:
-                pass
-
-    # --- 并发启动所有登录任务 (限制最多 3 个浏览器同时运行) ---
-    MAX_CONCURRENT_BROWSERS = 7
-    sem = asyncio.Semaphore(MAX_CONCURRENT_BROWSERS)
-
-    async def _login_with_limit(i: int, acct: dict) -> bool:
-        async with sem:
-            return await _login_one(i, acct)
-
-    tasks = [
-        asyncio.ensure_future(_login_with_limit(i, acct))
-        for i, acct in enumerate(accounts_to_login)
-    ]
-
-    # 持续转发步骤消息直到所有任务完成
-    all_done_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
-    while not all_done_task.done():
-        await _flush_step_messages(ws, msg_queue)
-        if not await _poll_cancel_command(ws, cancel_token):
-            # WebSocket 断开，取消所有任务
-            for t in tasks:
-                t.cancel()
-            return False
-    await _flush_step_messages(ws, msg_queue)
-
-    # 汇总结果
-    results = all_done_task.result()
-    for r in results:
-        if r is True:
-            success_count += 1
-
-    summary = f"批量登录完成: 成功 {success_count}/{total}"
-    if fail_list:
-        summary += f" | 失败: {'; '.join(fail_list)}"
-    await ws.send_json({"type": "result", "success": success_count > 0, "message": summary, "duration_ms": 0})
     return True
 
 
@@ -337,9 +186,9 @@ async def automation_websocket(ws: WebSocket):
                 if not profile and profiles:
                     # 没有运行中的, 取最新创建的
                     profile = profiles[-1]
-                # family-discover / family-swap / pool-batch-login 不强制要求浏览器运行
+                # family-discover / family-swap 不强制要求浏览器运行
                 # login 也豁免 (启动浏览器后自动登录, 避免竞态)
-                if action in (ACTION_FAMILY_DISCOVER, ACTION_FAMILY_SWAP, ACTION_POOL_BATCH_LOGIN, "login"):
+                if action in (ACTION_FAMILY_DISCOVER, ACTION_FAMILY_SWAP, "login"):
                     profile_id = profile.id if profile else None
                 elif not profile or not browser_manager.is_running(profile.id):
                     await ws.send_json({"type": "error", "message": f"浏览器未启动 (action={action})"})
@@ -509,23 +358,6 @@ async def automation_websocket(ws: WebSocket):
                     remove_emails=swap_remove,
                     new_count=swap_count,
                     specific_emails=swap_specific or None,
-                ):
-                    return
-                continue
-            elif action == ACTION_POOL_BATCH_LOGIN:
-                pool_gid = None
-                with get_db_session() as db:
-                    main_acct = db.query(Account).filter(Account.id == account_id).first()
-                    if main_acct and main_acct.family_group_id:
-                        pool_gid = main_acct.family_group_id
-                if not pool_gid:
-                    await ws.send_json({"type": "error", "message": "该账号没有关联的分组"})
-                    continue
-                if not await _handle_pool_batch_login(
-                    ws=ws,
-                    msg_queue=msg_queue,
-                    cancel_token=cancel_token,
-                    group_id=pool_gid,
                 ):
                     return
                 continue

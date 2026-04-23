@@ -9,7 +9,6 @@ export interface Account {
   group_name?: string;
   group_id?: number;
   family_group_id?: number;
-  pool_group_id?: number;
   is_family_owner?: boolean;
   is_family_pending?: boolean;
   family_member_count?: number;

@@ -195,18 +195,8 @@ ACTION_FAMILY_DISCOVER = "family-discover"
 ACTION_FAMILY_BATCH_INVITE = "family-batch-invite"
 ACTION_FAMILY_BATCH_REMOVE = "family-batch-remove"
 ACTION_FAMILY_SWAP = "family-swap"
-ACTION_POOL_BATCH_LOGIN = "pool-batch-login"
-ACTION_POOL_MARK_UNUSABLE = "pool-mark-unusable"
 ACTION_OAUTH = "oauth"
 ACTION_PHONE_VERIFY = "phone-verify"
-
-# ============================================================
-# Account Pool (号池)
-# ============================================================
-
-POOL_MAX_USE_COUNT = 2                  # 子号最多加入家庭组的次数
-POOL_STATUS_RETIRED = "retired"         # 废弃号（过期或用完）
-POOL_STATUS_UNUSABLE = "unusable"       # 无法使用（地区限制等）
 
 # -- Replace workflow phase labels --
 PHASE_REMOVE_OLD = "--- 移除旧成员 ---"

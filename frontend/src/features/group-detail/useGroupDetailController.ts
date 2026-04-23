@@ -370,7 +370,7 @@ export function useGroupDetailController(groupId: number) {
       }
       executeViaWs(activeAccountId, 'family-batch-remove', { member_emails: selectedEmails.join(',') }, 'family-remove')
     } else if (activeOp.key === 'family-swap') {
-      if (!swap.executeSwap(activeAccountId, selectedEmails, formValues)) {
+      if (!swap.executeSwap(activeAccountId, selectedEmails)) {
         return
       }
     } else {
@@ -462,6 +462,52 @@ export function useGroupDetailController(groupId: number) {
 
   const sortedAccounts = useMemo(() => getSortedGroupAccounts(group), [group])
 
+  const [batchRunning, setBatchRunning] = useState<string | null>(null)
+
+  const handleBatchLaunch = useCallback(async () => {
+    const targets = sortedAccounts.filter((a) => !browserRunning.has(a.id))
+    if (targets.length === 0) {
+      msg.info('所有账号浏览器已启动')
+      return
+    }
+    setBatchRunning('launch')
+    try {
+      for (const account of targets) {
+        await handleLaunchBrowser(account.id)
+      }
+    } finally {
+      setBatchRunning(null)
+    }
+  }, [browserRunning, handleLaunchBrowser, msg, sortedAccounts])
+
+  const handleBatchStop = useCallback(async () => {
+    const targets = sortedAccounts.filter((a) => browserRunning.has(a.id))
+    if (targets.length === 0) {
+      msg.info('没有运行中的浏览器')
+      return
+    }
+    setBatchRunning('stop')
+    try {
+      for (const account of targets) {
+        automation.cancel(account.id)
+        await handleStopBrowser(account.id)
+      }
+    } finally {
+      setBatchRunning(null)
+    }
+  }, [automation, browserRunning, handleStopBrowser, msg, sortedAccounts])
+
+  const handleBatchOAuth = useCallback(() => {
+    const targets = sortedAccounts.filter((a) => browserRunning.has(a.id))
+    if (targets.length === 0) {
+      msg.warning('请先启动浏览器')
+      return
+    }
+    for (const account of targets) {
+      handleOAuth(account.id)
+    }
+  }, [browserRunning, handleOAuth, msg, sortedAccounts])
+
   const handleSelectAllMembers = useCallback(() => {
     setSelectedEmails(swap.handleSelectAllMembers())
   }, [swap])
@@ -476,11 +522,15 @@ export function useGroupDetailController(groupId: number) {
     automation,
     availableAccountOptions,
     availableAccountsLoading,
+    batchRunning,
     browserLoading,
     browserRunning,
     formValues,
     group,
     handleAvailableAccountSearch,
+    handleBatchLaunch,
+    handleBatchOAuth,
+    handleBatchStop,
     handleClearBrowserData,
     handleCopyOAuthJson,
     handleDownloadOAuth,
@@ -509,10 +559,8 @@ export function useGroupDetailController(groupId: number) {
     setSelectedAccountId,
     setSelectedEmails,
     setSwapManualEmails: swap.setSwapManualEmails,
-    setSwapMode: swap.setSwapMode,
     sortedAccounts,
     swapManualEmails: swap.swapManualEmails,
-    swapMode: swap.swapMode,
     copyToClipboard,
     copyTOTPCode,
   }
