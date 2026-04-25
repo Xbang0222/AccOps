@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { Button, Empty, Flex, Spin, Tag, Tooltip, Typography } from 'antd'
-import { ArrowLeftOutlined, EyeInvisibleOutlined, EyeOutlined, LoginOutlined, PoweroffOutlined, SafetyCertificateOutlined, TeamOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, EyeInvisibleOutlined, EyeOutlined, LoginOutlined, PoweroffOutlined, SafetyCertificateOutlined, TeamOutlined, UsergroupAddOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { GroupAccountCard } from '@/features/group-detail/components/GroupAccountCard'
@@ -80,12 +80,11 @@ const GroupDetailPage: React.FC = () => {
         </Button>
         <Button
           size="small"
-          icon={<PoweroffOutlined />}
-          loading={controller.batchRunning === 'stop'}
-          disabled={controller.batchRunning !== null && controller.batchRunning !== 'stop'}
-          onClick={() => void controller.handleBatchStop()}
+          icon={<UsergroupAddOutlined />}
+          disabled={controller.batchRunning !== null}
+          onClick={controller.handleBatchAccept}
         >
-          一键关闭
+          一键接受邀请
         </Button>
         <Button
           size="small"
@@ -94,6 +93,15 @@ const GroupDetailPage: React.FC = () => {
           onClick={controller.handleBatchOAuth}
         >
           一键验证
+        </Button>
+        <Button
+          size="small"
+          icon={<PoweroffOutlined />}
+          loading={controller.batchRunning === 'stop'}
+          disabled={controller.batchRunning !== null && controller.batchRunning !== 'stop'}
+          onClick={() => void controller.handleBatchStop()}
+        >
+          一键关闭
         </Button>
         <Tooltip title={controller.masked ? '显示邮箱' : '隐藏邮箱'}>
           <Button

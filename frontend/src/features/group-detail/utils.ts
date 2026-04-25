@@ -9,6 +9,10 @@ export interface GroupMemberOption {
   value: string
 }
 
+export function compareEmail(left: string, right: string): number {
+  return left.localeCompare(right, undefined, { sensitivity: 'base' })
+}
+
 export function parseEmailInput(value: string): string[] {
   if (!/[,;\n\r\s]/.test(value)) {
     return []
@@ -48,6 +52,7 @@ export function getGroupMemberOptions(
       label: account.email,
       value: account.email,
     }))
+    .sort((left, right) => compareEmail(left.label, right.label))
 }
 
 export function getSortedGroupAccounts(group: Group | null): Account[] {
@@ -59,10 +64,12 @@ export function getSortedGroupAccounts(group: Group | null): Account[] {
   const mainAccount = accounts.find((account) => account.id === group.main_account_id)
   const members = accounts
     .filter((account) => account.id !== group.main_account_id)
-    .sort(
-      (left, right) =>
-        Number(Boolean(left.is_family_pending)) - Number(Boolean(right.is_family_pending)),
-    )
+    .sort((left, right) => {
+      const pendingDiff =
+        Number(Boolean(left.is_family_pending)) - Number(Boolean(right.is_family_pending))
+      if (pendingDiff !== 0) return pendingDiff
+      return compareEmail(left.email, right.email)
+    })
 
   return mainAccount ? [mainAccount, ...members] : members
 }

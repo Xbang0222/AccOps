@@ -35,6 +35,7 @@ import { useSwapOperation } from './useSwapOperation'
 import {
   FAMILY_GROUP_CAPACITY,
   FAMILY_GROUP_MAX_SUB_MEMBERS,
+  compareEmail,
   getGroupMemberOptions,
   getSortedGroupAccounts,
   parseEmailInput,
@@ -197,7 +198,9 @@ export function useGroupDetailController(groupId: number) {
     try {
       const { data } = await getAvailableAccounts(search)
       setAvailableAccountOptions(
-        data.accounts.map((a) => ({ label: a.email, value: a.email })),
+        data.accounts
+          .map((a) => ({ label: a.email, value: a.email }))
+          .sort((left, right) => compareEmail(left.label, right.label)),
       )
     } catch {
       // noop
@@ -456,6 +459,19 @@ export function useGroupDetailController(groupId: number) {
     }
   }, [browserRunning, handleOAuth, mainAccountId, msg, sortedAccounts])
 
+  const handleBatchAccept = useCallback(() => {
+    const targets = sortedAccounts.filter(
+      (a) => a.id !== mainAccountId && a.is_family_pending === true,
+    )
+    if (targets.length === 0) {
+      msg.info('没有待接受的邀请')
+      return
+    }
+    for (const account of targets) {
+      execute(account.id, 'family-accept', {}, 'family-accept')
+    }
+  }, [execute, mainAccountId, msg, sortedAccounts])
+
   const handleSelectAllMembers = useCallback(() => {
     setSelectedEmails(swap.handleSelectAllMembers())
   }, [swap])
@@ -512,6 +528,7 @@ export function useGroupDetailController(groupId: number) {
     formValues,
     group,
     handleAvailableAccountSearch,
+    handleBatchAccept,
     handleBatchLaunch,
     handleBatchOAuth,
     handleBatchStop,

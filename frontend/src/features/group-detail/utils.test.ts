@@ -6,12 +6,21 @@ import {
   updateAccountOpState,
 } from '@/types/automation'
 import {
+  compareEmail,
   getGroupMemberOptions,
   getSortedGroupAccounts,
   parseEmailInput,
 } from './utils'
 
 describe('group-detail utils', () => {
+  it('compareEmail is case-insensitive and locale-aware', () => {
+    expect(compareEmail('Alice@gmail.com', 'alice@gmail.com')).toBe(0)
+    expect(compareEmail('Bob@gmail.com', 'alice@gmail.com')).toBeGreaterThan(0)
+    expect(['Alice@gmail.com', 'bob@gmail.com', 'charlie@gmail.com']
+      .slice()
+      .sort(compareEmail)).toEqual(['Alice@gmail.com', 'bob@gmail.com', 'charlie@gmail.com'])
+  })
+
   it('parses pasted emails and removes duplicates', () => {
     expect(
       parseEmailInput(' foo@gmail.com,bar@gmail.com\nfoo@gmail.com ; baz@gmail.com '),
@@ -23,40 +32,44 @@ describe('group-detail utils', () => {
     expect(parseEmailInput('foo')).toEqual([])
   })
 
-  it('builds member options for the active account family', () => {
+  it('builds member options sorted by email', () => {
     const group: Group = {
       id: 1,
       name: 'test',
       accounts: [
         { id: 1, email: 'owner@gmail.com', password: '', family_group_id: 10 },
-        { id: 2, email: 'member1@gmail.com', password: '', family_group_id: 10 },
-        { id: 3, email: 'member2@gmail.com', password: '', family_group_id: 10 },
+        { id: 2, email: 'charlie@gmail.com', password: '', family_group_id: 10 },
+        { id: 3, email: 'alice@gmail.com', password: '', family_group_id: 10 },
         { id: 4, email: 'other@gmail.com', password: '', family_group_id: 11 },
       ],
     }
 
     expect(getGroupMemberOptions(group, 1)).toEqual([
-      { label: 'member1@gmail.com', value: 'member1@gmail.com' },
-      { label: 'member2@gmail.com', value: 'member2@gmail.com' },
+      { label: 'alice@gmail.com', value: 'alice@gmail.com' },
+      { label: 'charlie@gmail.com', value: 'charlie@gmail.com' },
     ])
   })
 
-  it('sorts main account first and pending members last', () => {
+  it('sorts main first, then sub members by email, with pending last', () => {
     const group: Group = {
       id: 1,
       name: 'test',
       main_account_id: 2,
       accounts: [
-        { id: 1, email: 'pending@gmail.com', password: '', is_family_pending: true },
+        { id: 1, email: 'zelda@gmail.com', password: '' },
         { id: 2, email: 'owner@gmail.com', password: '' },
-        { id: 3, email: 'member@gmail.com', password: '' },
+        { id: 3, email: 'pending-bob@gmail.com', password: '', is_family_pending: true },
+        { id: 4, email: 'alice@gmail.com', password: '' },
+        { id: 5, email: 'pending-amy@gmail.com', password: '', is_family_pending: true },
       ],
     }
 
     expect(getSortedGroupAccounts(group).map((account) => account.email)).toEqual([
       'owner@gmail.com',
-      'member@gmail.com',
-      'pending@gmail.com',
+      'alice@gmail.com',
+      'zelda@gmail.com',
+      'pending-amy@gmail.com',
+      'pending-bob@gmail.com',
     ])
   })
 
