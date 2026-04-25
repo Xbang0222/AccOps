@@ -1,7 +1,6 @@
 """自动化操作 - 换号流程 (移除旧子号 → 选取新子号 → 邀请 → 接受 → discover 同步)"""
 import asyncio
 import json
-import logging
 import queue
 
 from fastapi import WebSocket
@@ -40,8 +39,6 @@ from services.automation_utils import (
     save_browser_cookies,
     save_subscription_status,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _swap_ensure_browser_profile(account_id: int):
@@ -149,97 +146,33 @@ async def _swap_phase_remove(
     totp_secret: str,
     remove_emails: list[str],
 ) -> int:
-    """阶段1: 批量移除旧子号。返回移除成功数。"""
-    from services.family_api import FamilyAPI
+    """阶段1: 逐个移除旧子号，复用 run_remove_family_member 的单账号逻辑。
 
+    返回移除成功数；-1 表示用户取消。
+    """
     await ws.send_json({"type": "step", "name": PHASE_REMOVE_OLD, "status": "info", "message": f"共 {len(remove_emails)} 个"})
     remove_success = 0
-    remove_fail = []
 
-    await ws.send_json({"type": "step", "name": "密码重验证", "status": "running", "message": "获取 rapt token..."})
+    for i, email in enumerate(remove_emails):
+        if cancel_token.is_cancelled:
+            return -1
+        step = _create_step_handler(msg_queue, i * 50)
+        step({"type": "step", "name": f"移除 {email}", "status": "running", "message": f"({i+1}/{len(remove_emails)})"})
 
-    rapt = None
-    main_cookies = None
-    email_to_uid: dict[str, str] = {}
-    try:
-        page = browser_manager.get_page(profile_id)
-        if page:
-            main_cookies = browser_manager.get_cookies(profile_id)
-            if main_cookies:
-                def _query_members_for_uid():
-                    with FamilyAPI(main_cookies) as api:
-                        return api.query_members()
+        task = asyncio.ensure_future(
+            run_remove_family_member(profile_id, email, password, totp_secret, on_step=step, cancel_token=cancel_token)
+        )
+        if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+            return -1
 
-                members_info = await asyncio.get_event_loop().run_in_executor(None, _query_members_for_uid)
-                for m in members_info.get("members", []):
-                    m_email = m.get("email", "").lower()
-                    if m_email:
-                        email_to_uid[m_email] = m.get("user_id", "")
-
-            first_uid = next((email_to_uid.get(e.lower(), "") for e in remove_emails if email_to_uid.get(e.lower())), "")
-            rapt_path = f"/family/remove/g/{first_uid}" if first_uid else "/family/delete"
-
-            from services.browser import get_rapt_sync
-            rapt = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: get_rapt_sync(page, rapt_path, password, totp_secret),
-            )
-            main_cookies = browser_manager.get_cookies(profile_id)
-    except Exception as exc:
-        logger.warning(f"rapt 获取异常: {exc}")
-
-    if not rapt:
-        await ws.send_json({"type": "step", "name": "密码重验证", "status": "fail", "message": "rapt 获取失败, 尝试逐个移除"})
-        for i, email in enumerate(remove_emails):
-            if cancel_token.is_cancelled:
-                break
-            step = _create_step_handler(msg_queue, i * 50)
-            step({"type": "step", "name": f"移除 {email}", "status": "running", "message": f"({i+1}/{len(remove_emails)})"})
-
-            task = asyncio.ensure_future(
-                run_remove_family_member(profile_id, email, password, totp_secret, on_step=step, cancel_token=cancel_token)
-            )
-            if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
-                return -1  # cancelled
-
-            result, error = _get_task_result(task)
-            if result and result.success:
-                remove_success += 1
-                sync_group_after_action(ACTION_FAMILY_REMOVE, account_id, True, result.message, {"member_email": email})
-            else:
-                remove_fail.append(email)
-    else:
-        await ws.send_json({"type": "step", "name": "密码重验证", "status": "ok", "message": "rapt 获取成功"})
-
-        try:
-            with FamilyAPI(main_cookies) as api:
-                for i, email in enumerate(remove_emails):
-                    if cancel_token.is_cancelled:
-                        break
-                    await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "running", "message": f"({i+1}/{len(remove_emails)})"})
-
-                    uid = email_to_uid.get(email.lower(), "")
-                    if not uid:
-                        remove_fail.append(f"{email}: 未找到成员")
-                        await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "fail", "message": "未找到成员"})
-                        continue
-
-                    try:
-                        ok = await asyncio.get_event_loop().run_in_executor(
-                            None, lambda _uid=uid: api.remove_member(_uid, rapt),
-                        )
-                        if ok:
-                            remove_success += 1
-                            sync_group_after_action(ACTION_FAMILY_REMOVE, account_id, True, f"已移除: {email}", {"member_email": email})
-                            await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "ok", "message": "已移除"})
-                        else:
-                            remove_fail.append(email)
-                            await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "fail", "message": "RPC 调用失败"})
-                    except Exception as exc:
-                        remove_fail.append(f"{email}: {exc}")
-                        await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "fail", "message": str(exc)[:80]})
-        except Exception as exc:
-            await ws.send_json({"type": "step", "name": "批量移除", "status": "fail", "message": f"异常: {str(exc)[:80]}"})
+        result, error = _get_task_result(task)
+        if result and result.success:
+            remove_success += 1
+            sync_group_after_action(ACTION_FAMILY_REMOVE, account_id, True, result.message, {"member_email": email})
+            await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "ok", "message": (result.message or "已移除")[:120]})
+        else:
+            fail_msg = result.message if result else (str(error) if error else "移除失败")
+            await ws.send_json({"type": "step", "name": f"移除 {email}", "status": "fail", "message": fail_msg[:120]})
 
     await ws.send_json({"type": "step", "name": "移除完成", "status": "ok", "message": f"移除 {remove_success}/{len(remove_emails)}"})
     return remove_success
@@ -503,6 +436,14 @@ async def _handle_family_swap(
         )
         if remove_success < 0:  # cancelled
             return False
+        if remove_success < len(remove_emails):
+            await ws.send_json({
+                "type": "result",
+                "success": False,
+                "message": f"移除未全部成功 ({remove_success}/{len(remove_emails)}), 已中止换号",
+                "duration_ms": 0,
+            })
+            return True
 
     # ── 阶段2: 选取新子号 ──
     if specific_emails:
