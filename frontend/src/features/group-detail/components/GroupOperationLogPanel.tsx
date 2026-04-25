@@ -3,7 +3,7 @@ import { theme as antTheme } from 'antd'
 import { GoogleOutlined, LoadingOutlined } from '@ant-design/icons'
 
 import type { Account } from '@/types'
-import type { AccountOpState } from '../utils'
+import type { AccountOpState } from '@/types/automation'
 
 const { Text } = Typography
 

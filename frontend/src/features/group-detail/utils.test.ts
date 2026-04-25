@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest'
 import type { Group } from '@/types'
 import {
   createAccountOpState,
+  updateAccountOpState,
+} from '@/types/automation'
+import {
   getGroupMemberOptions,
   getSortedGroupAccounts,
   parseEmailInput,
-  updateAccountOpState,
 } from './utils'
 
 describe('group-detail utils', () => {

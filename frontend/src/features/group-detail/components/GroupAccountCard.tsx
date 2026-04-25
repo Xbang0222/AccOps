@@ -30,7 +30,7 @@ import { getAutomationOperationIcon } from '@/features/automation/operationPrese
 import { maskEmail } from '@/utils/mask'
 import type { Account } from '@/types'
 import { isAbnormalPoolStatus } from '@/constants/accountStatus'
-import type { AccountOpState } from '../utils'
+import { useAccountOpState } from '@/contexts/automationContext'
 
 const { Text } = Typography
 
@@ -41,7 +41,6 @@ interface GroupAccountCardProps {
   isSelected: boolean
   isRunning: boolean
   isBrowserLoading: boolean
-  opState?: AccountOpState
   onClearStatus: (accountId: number) => void
   onCopyOAuthJson: (accountId: number) => void
   onCopyText: (text: string, label: string) => void
@@ -63,7 +62,6 @@ export function GroupAccountCard({
   isSelected,
   isRunning,
   isBrowserLoading,
-  opState,
   onClearStatus,
   onCopyOAuthJson,
   onCopyText,
@@ -78,6 +76,7 @@ export function GroupAccountCard({
   onToggleBrowser,
 }: GroupAccountCardProps) {
   const { token } = antTheme.useToken()
+  const opState = useAccountOpState(account.id)
   const isPending = Boolean(account.is_family_pending)
   const visibleOps = isPending ? [] : getVisibleAutomationOperations(account)
   const isThisAccountRunning = Boolean(opState?.runningOpKey)

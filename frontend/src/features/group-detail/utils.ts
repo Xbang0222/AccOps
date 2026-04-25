@@ -1,43 +1,12 @@
 import type { AutomationOperationDefinition } from '@/features/automation/operationMeta'
-import type { StepMsg } from '@/hooks/useAutomationWs'
 import type { Account, Group } from '@/types'
 
 export const FAMILY_GROUP_CAPACITY = 6
 export const FAMILY_GROUP_MAX_SUB_MEMBERS = 5
 
-export interface AccountOpState {
-  runningOpKey: string | null
-  steps: StepMsg[]
-  resultMsg: string
-  resultSuccess: boolean | null
-}
-
 export interface GroupMemberOption {
   label: string
   value: string
-}
-
-export function createAccountOpState(runningOpKey: string | null = null): AccountOpState {
-  return {
-    runningOpKey,
-    steps: [],
-    resultMsg: '',
-    resultSuccess: null,
-  }
-}
-
-export function updateAccountOpState(
-  previous: Record<number, AccountOpState>,
-  accountId: number,
-  patch: Partial<AccountOpState>,
-): Record<number, AccountOpState> {
-  return {
-    ...previous,
-    [accountId]: {
-      ...(previous[accountId] ?? createAccountOpState()),
-      ...patch,
-    },
-  }
 }
 
 export function parseEmailInput(value: string): string[] {

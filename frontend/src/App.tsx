@@ -3,6 +3,7 @@ import { App as AntApp, ConfigProvider, message } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { RouterProvider } from 'react-router-dom'
 
+import { AutomationProvider } from '@/contexts/AutomationProvider'
 import LoginPage from '@/pages/LoginPage'
 import { createRouter } from '@/router'
 import '@/styles/global.css'
@@ -30,7 +31,9 @@ function AppInner() {
     <ConfigProvider locale={zhCN} theme={themeConfig}>
       <AntApp>
         {token ? (
-          <RouterProvider router={router} />
+          <AutomationProvider>
+            <RouterProvider router={router} />
+          </AutomationProvider>
         ) : (
           <LoginPage onLoginSuccess={handleLoginSuccess} />
         )}

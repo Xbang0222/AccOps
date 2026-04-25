@@ -117,7 +117,6 @@ const GroupDetailPage: React.FC = () => {
                   isSelected={controller.selectedAccountId === account.id}
                   isRunning={controller.browserRunning.has(account.id)}
                   isBrowserLoading={controller.browserLoading.has(account.id)}
-                  opState={controller.opStates[account.id]}
                   onClearStatus={controller.handleClearStatus}
                   onCopyOAuthJson={controller.handleCopyOAuthJson}
                   onCopyText={controller.copyToClipboard}

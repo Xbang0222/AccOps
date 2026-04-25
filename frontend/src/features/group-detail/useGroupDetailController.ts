@@ -22,20 +22,22 @@ import {
   updateLoadingAccountSet,
   updateRunningAccountSet,
 } from '@/features/browser/runtime'
-import { useAutomationWs } from '@/hooks/useAutomationWs'
+import {
+  useAccountOpState,
+  useAutomation,
+  useAutomationEvents,
+} from '@/contexts/automationContext'
 import type { Group } from '@/types'
 import { getErrorMessage } from '@/utils/http'
 import { generateTOTP } from '@/utils/totp'
 
 import { useSwapOperation } from './useSwapOperation'
 import {
-  createAccountOpState,
   FAMILY_GROUP_CAPACITY,
   FAMILY_GROUP_MAX_SUB_MEMBERS,
   getGroupMemberOptions,
   getSortedGroupAccounts,
   parseEmailInput,
-  updateAccountOpState,
 } from './utils'
 
 export function useGroupDetailController(groupId: number) {
@@ -47,7 +49,6 @@ export function useGroupDetailController(groupId: number) {
   const [browserRunning, setBrowserRunning] = useState<Set<number>>(new Set())
   const [browserLoading, setBrowserLoading] = useState<Set<number>>(new Set())
   const [profileMap, setProfileMap] = useState<Record<number, number>>({})
-  const [opStates, setOpStates] = useState<Record<number, ReturnType<typeof createAccountOpState>>>({})
   const [activeOp, setActiveOp] = useState<AutomationOperationDefinition | null>(null)
   const [activeAccountId, setActiveAccountId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState<Record<string, string>>({})
@@ -57,7 +58,7 @@ export function useGroupDetailController(groupId: number) {
   const [availableAccountsLoading, setAvailableAccountsLoading] = useState(false)
   const availableSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const wsAccountIdRef = useRef<number | null>(null)
+  const { execute, cancel, setOpState, resetOpState } = useAutomation()
 
   const loadGroup = useCallback(async () => {
     setLoading(true)
@@ -96,75 +97,18 @@ export function useGroupDetailController(groupId: number) {
     }
   }, [])
 
-  const setAccountOpPatch = useCallback((accountId: number, patch: Partial<ReturnType<typeof createAccountOpState>>) => {
-    setOpStates((previous) => updateAccountOpState(previous, accountId, patch))
-  }, [])
-
-  const automation = useAutomationWs({
-    onStep: (accountId, step) => {
-      setOpStates((previous) => {
-        const current = previous[accountId]
-        if (!current) return previous
-        const updatedSteps = [...(current.steps ?? [])]
-        if (step.status === 'running') {
-          updatedSteps.push(step)
-        } else {
-          let idx = -1
-          for (let j = updatedSteps.length - 1; j >= 0; j--) {
-            if (updatedSteps[j].step === step.step) { idx = j; break }
-          }
-          if (idx >= 0) updatedSteps[idx] = step
-          else updatedSteps.push(step)
-        }
-        return { ...previous, [accountId]: { ...current, steps: updatedSteps } }
-      })
-    },
-    onSuccess: (_opKey, message, accountId) => {
-      const id = accountId ?? wsAccountIdRef.current
-      if (id !== null) {
-        setAccountOpPatch(id, {
-          runningOpKey: null,
-          resultMsg: message,
-          resultSuccess: true,
-        })
+  // 任务成功后刷新本分组数据（Provider 内已经弹了全局 message，这里只做本页副作用）
+  useAutomationEvents({
+    onSuccess: (_opKey, _message, accountId) => {
+      if (group?.accounts?.some((account) => account.id === accountId)) {
+        void loadGroup()
       }
-      msg.success(message)
-      void loadGroup()
-    },
-    onFail: (_opKey, message, accountId) => {
-      const id = accountId ?? wsAccountIdRef.current
-      if (id !== null) {
-        setAccountOpPatch(id, {
-          runningOpKey: null,
-          resultMsg: message,
-          resultSuccess: false,
-        })
-      }
-      msg.warning(message)
-    },
-    onError: (_opKey, message, accountId) => {
-      const id = accountId ?? wsAccountIdRef.current
-      if (id !== null) {
-        setAccountOpPatch(id, {
-          runningOpKey: null,
-          resultMsg: message,
-          resultSuccess: false,
-        })
-      }
-      msg.error(message)
     },
   })
-  const { execute } = automation
 
   const executeViaWs = useCallback(
     (accountId: number, action: string, extra: Record<string, string> = {}, opKey?: string) => {
-      const trackingKey = opKey ?? action
       setSelectedAccountId(accountId)
-      wsAccountIdRef.current = accountId
-      setOpStates((previous) => ({
-        ...previous,
-        [accountId]: createAccountOpState(trackingKey),
-      }))
       execute(accountId, action, extra, opKey)
     },
     [execute],
@@ -220,19 +164,16 @@ export function useGroupDetailController(groupId: number) {
 
   const handleToggleBrowser = useCallback((accountId: number, running: boolean) => {
     if (running) {
-      automation.cancel(accountId)
+      cancel(accountId)
       void handleStopBrowser(accountId)
       return
     }
 
     void handleLaunchBrowser(accountId)
-  }, [automation, handleLaunchBrowser, handleStopBrowser])
+  }, [cancel, handleLaunchBrowser, handleStopBrowser])
 
   const handleDiscover = useCallback(async (accountId: number) => {
-    setOpStates((previous) => ({
-      ...previous,
-      [accountId]: createAccountOpState('family-discover'),
-    }))
+    resetOpState(accountId, 'family-discover')
 
     try {
       const { data } = await discoverFamily(accountId)
@@ -247,9 +188,9 @@ export function useGroupDetailController(groupId: number) {
     } catch (error: unknown) {
       msg.error(getErrorMessage(error, '同步请求失败'))
     } finally {
-      setAccountOpPatch(accountId, { runningOpKey: null })
+      setOpState(accountId, { runningOpKey: null })
     }
-  }, [loadGroup, msg, setAccountOpPatch])
+  }, [loadGroup, msg, resetOpState, setOpState])
 
   const loadAvailableAccounts = useCallback(async (search: string = '') => {
     setAvailableAccountsLoading(true)
@@ -463,49 +404,57 @@ export function useGroupDetailController(groupId: number) {
 
   const [batchRunning, setBatchRunning] = useState<string | null>(null)
 
+  const mainAccountId = group?.main_account_id ?? null
+
   const handleBatchLaunch = useCallback(async () => {
-    const targets = sortedAccounts.filter((a) => !browserRunning.has(a.id))
+    const targets = sortedAccounts.filter(
+      (a) => a.id !== mainAccountId && !browserRunning.has(a.id),
+    )
     if (targets.length === 0) {
-      msg.info('所有账号浏览器已启动')
+      msg.info('所有子号浏览器已启动')
       return
     }
     setBatchRunning('launch')
     try {
-      for (const account of targets) {
-        await handleLaunchBrowser(account.id)
-      }
+      await Promise.allSettled(targets.map((account) => handleLaunchBrowser(account.id)))
     } finally {
       setBatchRunning(null)
     }
-  }, [browserRunning, handleLaunchBrowser, msg, sortedAccounts])
+  }, [browserRunning, handleLaunchBrowser, mainAccountId, msg, sortedAccounts])
 
   const handleBatchStop = useCallback(async () => {
-    const targets = sortedAccounts.filter((a) => browserRunning.has(a.id))
+    const targets = sortedAccounts.filter(
+      (a) => a.id !== mainAccountId && browserRunning.has(a.id),
+    )
     if (targets.length === 0) {
-      msg.info('没有运行中的浏览器')
+      msg.info('没有运行中的子号浏览器')
       return
     }
     setBatchRunning('stop')
     try {
-      for (const account of targets) {
-        automation.cancel(account.id)
-        await handleStopBrowser(account.id)
-      }
+      await Promise.allSettled(
+        targets.map(async (account) => {
+          cancel(account.id)
+          await handleStopBrowser(account.id)
+        }),
+      )
     } finally {
       setBatchRunning(null)
     }
-  }, [automation, browserRunning, handleStopBrowser, msg, sortedAccounts])
+  }, [browserRunning, cancel, handleStopBrowser, mainAccountId, msg, sortedAccounts])
 
   const handleBatchOAuth = useCallback(() => {
-    const targets = sortedAccounts.filter((a) => browserRunning.has(a.id))
+    const targets = sortedAccounts.filter(
+      (a) => a.id !== mainAccountId && browserRunning.has(a.id),
+    )
     if (targets.length === 0) {
-      msg.warning('请先启动浏览器')
+      msg.warning('请先启动子号浏览器')
       return
     }
     for (const account of targets) {
       handleOAuth(account.id)
     }
-  }, [browserRunning, handleOAuth, msg, sortedAccounts])
+  }, [browserRunning, handleOAuth, mainAccountId, msg, sortedAccounts])
 
   const handleSelectAllMembers = useCallback(() => {
     setSelectedEmails(swap.handleSelectAllMembers())
@@ -551,11 +500,10 @@ export function useGroupDetailController(groupId: number) {
     () => (group?.accounts ?? []).find((account) => account.id === selectedAccountId) ?? null,
     [group?.accounts, selectedAccountId],
   )
-  const selectedOpState = selectedAccountId ? (opStates[selectedAccountId] ?? null) : null
+  const selectedOpState = useAccountOpState(selectedAccountId)
 
   return {
     activeOp,
-    automation,
     availableAccountOptions,
     availableAccountsLoading,
     batchRunning,
@@ -589,7 +537,6 @@ export function useGroupDetailController(groupId: number) {
     loading,
     masked,
     memberOptions,
-    opStates,
     profileMap,
     selectedAccount,
     selectedAccountId,

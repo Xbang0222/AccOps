@@ -46,7 +46,7 @@ import { getErrorMessage } from '@/utils/http';
 import AccountModal from '@/components/AccountModal';
 import ResizableTitle from '@/components/ResizableTitle';
 import { generateTOTP } from '@/utils/totp';
-import { useAutomationWs } from '@/hooks/useAutomationWs';
+import { useAutomation, useAutomationEvents } from '@/contexts/automationContext';
 
 const { Text } = Typography;
 
@@ -77,13 +77,11 @@ const AccountsPage: React.FC = () => {
   const [browserLoading, setBrowserLoading] = useState<Set<number>>(new Set());
   const [profileMap, setProfileMap] = useState<Record<number, number>>({});
 
-  const loginWs = useAutomationWs({
-    onSuccess: (_opKey, message) => {
-      msg.success(message);
+  const { execute: executeAutomation } = useAutomation();
+  useAutomationEvents({
+    onSuccess: () => {
       void loadAccounts();
     },
-    onFail: (_opKey, message) => { msg.warning(message); },
-    onError: (_opKey, message) => { msg.error(message); },
   });
 
   const loadAccounts = useCallback(async () => {
@@ -147,7 +145,7 @@ const AccountsPage: React.FC = () => {
       msg.success('浏览器已启动，开始自动登录...');
 
       // 通过 WebSocket 触发自动登录（不显示日志）
-      loginWs.execute(accountId, 'login');
+      executeAutomation(accountId, 'login');
     } catch (error: unknown) {
       msg.error(getErrorMessage(error, '启动失败'));
     } finally {
