@@ -13,6 +13,14 @@ export function compareEmail(left: string, right: string): number {
   return left.localeCompare(right, undefined, { sensitivity: 'base' })
 }
 
+/** 子号排序: pending 沉底, 同段内按邮箱字母序。卡片列表与下拉共享。 */
+export function compareSubAccount(left: Account, right: Account): number {
+  const pendingDiff =
+    Number(Boolean(left.is_family_pending)) - Number(Boolean(right.is_family_pending))
+  if (pendingDiff !== 0) return pendingDiff
+  return compareEmail(left.email, right.email)
+}
+
 export function parseEmailInput(value: string): string[] {
   if (!/[,;\n\r\s]/.test(value)) {
     return []
@@ -48,11 +56,11 @@ export function getGroupMemberOptions(
         account.id !== activeAccountId &&
         account.family_group_id === activeAccount.family_group_id,
     )
+    .sort(compareSubAccount)
     .map((account) => ({
       label: account.email,
       value: account.email,
     }))
-    .sort((left, right) => compareEmail(left.label, right.label))
 }
 
 export function getSortedGroupAccounts(group: Group | null): Account[] {
@@ -64,12 +72,7 @@ export function getSortedGroupAccounts(group: Group | null): Account[] {
   const mainAccount = accounts.find((account) => account.id === group.main_account_id)
   const members = accounts
     .filter((account) => account.id !== group.main_account_id)
-    .sort((left, right) => {
-      const pendingDiff =
-        Number(Boolean(left.is_family_pending)) - Number(Boolean(right.is_family_pending))
-      if (pendingDiff !== 0) return pendingDiff
-      return compareEmail(left.email, right.email)
-    })
+    .sort(compareSubAccount)
 
   return mainAccount ? [mainAccount, ...members] : members
 }

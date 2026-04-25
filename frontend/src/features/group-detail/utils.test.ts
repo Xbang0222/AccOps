@@ -32,7 +32,7 @@ describe('group-detail utils', () => {
     expect(parseEmailInput('foo')).toEqual([])
   })
 
-  it('builds member options sorted by email', () => {
+  it('builds member options with pending last and active sorted by email', () => {
     const group: Group = {
       id: 1,
       name: 'test',
@@ -40,13 +40,15 @@ describe('group-detail utils', () => {
         { id: 1, email: 'owner@gmail.com', password: '', family_group_id: 10 },
         { id: 2, email: 'charlie@gmail.com', password: '', family_group_id: 10 },
         { id: 3, email: 'alice@gmail.com', password: '', family_group_id: 10 },
-        { id: 4, email: 'other@gmail.com', password: '', family_group_id: 11 },
+        { id: 4, email: 'beth@gmail.com', password: '', family_group_id: 10, is_family_pending: true },
+        { id: 5, email: 'other@gmail.com', password: '', family_group_id: 11 },
       ],
     }
 
     expect(getGroupMemberOptions(group, 1)).toEqual([
       { label: 'alice@gmail.com', value: 'alice@gmail.com' },
       { label: 'charlie@gmail.com', value: 'charlie@gmail.com' },
+      { label: 'beth@gmail.com', value: 'beth@gmail.com' },
     ])
   })
 
