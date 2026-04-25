@@ -66,3 +66,9 @@ export const getAvailableAccounts = (search?: string) => {
   if (search) params.append('search', search);
   return client.get<{ accounts: { id: number; email: string }[] }>(`${API_PREFIX}/accounts/available?${params}`);
 };
+
+export const markAccountUnusable = (id: number) =>
+  client.post<{ message: string }>(`${API_PREFIX}/accounts/${id}/mark-unusable`);
+
+export const clearAccountStatus = (id: number) =>
+  client.post<{ message: string }>(`${API_PREFIX}/accounts/${id}/clear-status`);

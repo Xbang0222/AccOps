@@ -15,7 +15,9 @@ import {
   PhoneOutlined,
   PoweroffOutlined,
   SafetyCertificateOutlined,
+  StopOutlined,
   TeamOutlined,
+  UndoOutlined,
   UserDeleteOutlined,
   UserOutlined,
 } from '@ant-design/icons'
@@ -27,6 +29,7 @@ import {
 import { getAutomationOperationIcon } from '@/features/automation/operationPresentation'
 import { maskEmail } from '@/utils/mask'
 import type { Account } from '@/types'
+import { isAbnormalPoolStatus } from '@/constants/accountStatus'
 import type { AccountOpState } from '../utils'
 
 const { Text } = Typography
@@ -39,10 +42,12 @@ interface GroupAccountCardProps {
   isRunning: boolean
   isBrowserLoading: boolean
   opState?: AccountOpState
+  onClearStatus: (accountId: number) => void
   onCopyOAuthJson: (accountId: number) => void
   onCopyText: (text: string, label: string) => void
   onCopyTOTP: (secret: string) => void
   onDownloadOAuth: (accountId: number) => void
+  onMarkUnusable: (accountId: number) => void
   onOAuth: (accountId: number) => void
   onOperationClick: (accountId: number, operation: AutomationOperationDefinition) => void
   onPhoneVerify: (accountId: number, validationUrl: string) => void
@@ -59,10 +64,12 @@ export function GroupAccountCard({
   isRunning,
   isBrowserLoading,
   opState,
+  onClearStatus,
   onCopyOAuthJson,
   onCopyText,
   onCopyTOTP,
   onDownloadOAuth,
+  onMarkUnusable,
   onOAuth,
   onOperationClick,
   onPhoneVerify,
@@ -202,6 +209,15 @@ export function GroupAccountCard({
                   <Button type="text" size="small" icon={<CopyOutlined style={{ color: '#faad14' }} />} onClick={() => onCopyText(account.password, '密码')} style={{ padding: '0 4px' }} />
                 </Tooltip>
               ) : null}
+              {isAbnormalPoolStatus(account.pool_status) ? (
+                <Tooltip title="恢复正常">
+                  <Button type="text" size="small" icon={<UndoOutlined style={{ color: '#52c41a' }} />} onClick={() => onClearStatus(account.id)} style={{ padding: '0 4px' }} />
+                </Tooltip>
+              ) : (
+                <Tooltip title="标记无法使用">
+                  <Button type="text" size="small" icon={<StopOutlined style={{ color: '#ff4d4f', opacity: 0.6 }} />} onClick={() => onMarkUnusable(account.id)} style={{ padding: '0 4px' }} />
+                </Tooltip>
+              )}
               <Tooltip title="接受邀请">
                 <Button
                   type="text"
@@ -249,6 +265,15 @@ export function GroupAccountCard({
                   <Button type="text" size="small" icon={<CopyOutlined style={{ color: '#faad14' }} />} onClick={() => onCopyText(account.password, '密码')} style={{ padding: '0 4px' }} />
                 </Tooltip>
               ) : null}
+              {isAbnormalPoolStatus(account.pool_status) ? (
+                <Tooltip title="恢复正常">
+                  <Button type="text" size="small" icon={<UndoOutlined style={{ color: '#52c41a' }} />} onClick={() => onClearStatus(account.id)} style={{ padding: '0 4px' }} />
+                </Tooltip>
+              ) : (
+                <Tooltip title="标记无法使用">
+                  <Button type="text" size="small" icon={<StopOutlined style={{ color: '#ff4d4f', opacity: 0.6 }} />} onClick={() => onMarkUnusable(account.id)} style={{ padding: '0 4px' }} />
+                </Tooltip>
+              )}
               <Tooltip title="OAuth 授权">
                 <Button
                   type="text"

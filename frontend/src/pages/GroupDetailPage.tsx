@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Button, Empty, Flex, Spin, Tag, Tooltip, Typography } from 'antd'
 import { ArrowLeftOutlined, EyeInvisibleOutlined, EyeOutlined, LoginOutlined, PoweroffOutlined, SafetyCertificateOutlined, TeamOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -15,6 +15,31 @@ const GroupDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const groupId = Number(groupIdParam)
   const controller = useGroupDetailController(groupId)
+
+  const modalCapacity = useMemo(
+    () => ({
+      invite: controller.inviteCapacityLeft,
+      swapNew: controller.swapNewCapacityLeft,
+    }),
+    [controller.inviteCapacityLeft, controller.swapNewCapacityLeft],
+  )
+
+  const modalSelectAll = useMemo(
+    () => ({
+      invite: controller.handleSelectAllInviteEmails,
+      members: controller.handleSelectAllMembers,
+      swapManual: controller.handleSelectAllSwapManualEmails,
+      clearSelectedEmails: controller.handleClearSelectedEmails,
+      clearSwapManualEmails: controller.handleClearSwapManualEmails,
+    }),
+    [
+      controller.handleSelectAllInviteEmails,
+      controller.handleSelectAllMembers,
+      controller.handleSelectAllSwapManualEmails,
+      controller.handleClearSelectedEmails,
+      controller.handleClearSwapManualEmails,
+    ],
+  )
 
   if (controller.loading && !controller.group) {
     return (
@@ -93,10 +118,12 @@ const GroupDetailPage: React.FC = () => {
                   isRunning={controller.browserRunning.has(account.id)}
                   isBrowserLoading={controller.browserLoading.has(account.id)}
                   opState={controller.opStates[account.id]}
+                  onClearStatus={controller.handleClearStatus}
                   onCopyOAuthJson={controller.handleCopyOAuthJson}
                   onCopyText={controller.copyToClipboard}
                   onCopyTOTP={controller.copyTOTPCode}
                   onDownloadOAuth={controller.handleDownloadOAuth}
+                  onMarkUnusable={controller.handleMarkUnusable}
                   onOAuth={controller.handleOAuth}
                   onOperationClick={controller.handleOperationClick}
                   onPhoneVerify={controller.handlePhoneVerify}
@@ -135,7 +162,8 @@ const GroupDetailPage: React.FC = () => {
         onChangeSwapManualEmails={controller.setSwapManualEmails}
         onOk={controller.handleFieldModalOk}
         onSearchEmails={controller.handleEmailSearch}
-        onSelectAllMembers={controller.handleSelectAllMembers}
+        capacity={modalCapacity}
+        selectAll={modalSelectAll}
       />
     </div>
   )

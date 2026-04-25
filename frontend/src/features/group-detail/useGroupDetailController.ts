@@ -2,6 +2,7 @@ import { App } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  clearAccountStatus,
   createBrowserProfile,
   discoverFamily,
   downloadOAuthCredential,
@@ -10,6 +11,7 @@ import {
   getGroup,
   getOAuthCredential,
   launchBrowser,
+  markAccountUnusable,
   removeAccountFromGroup,
   stopBrowser,
 } from '@/api'
@@ -28,6 +30,8 @@ import { generateTOTP } from '@/utils/totp'
 import { useSwapOperation } from './useSwapOperation'
 import {
   createAccountOpState,
+  FAMILY_GROUP_CAPACITY,
+  FAMILY_GROUP_MAX_SUB_MEMBERS,
   getGroupMemberOptions,
   getSortedGroupAccounts,
   parseEmailInput,
@@ -430,8 +434,28 @@ export function useGroupDetailController(groupId: number) {
       await removeAccountFromGroup(accountId)
       msg.success('账号已从分组移除')
       await loadGroup()
-    } catch {
-      msg.error('移除失败')
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '移除失败'))
+    }
+  }, [loadGroup, msg])
+
+  const handleMarkUnusable = useCallback(async (accountId: number) => {
+    try {
+      await markAccountUnusable(accountId)
+      msg.success('已标记为无法使用')
+      await loadGroup()
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '标记失败'))
+    }
+  }, [loadGroup, msg])
+
+  const handleClearStatus = useCallback(async (accountId: number) => {
+    try {
+      await clearAccountStatus(accountId)
+      msg.success('已恢复正常状态')
+      await loadGroup()
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '操作失败'))
     }
   }, [loadGroup, msg])
 
@@ -486,6 +510,43 @@ export function useGroupDetailController(groupId: number) {
   const handleSelectAllMembers = useCallback(() => {
     setSelectedEmails(swap.handleSelectAllMembers())
   }, [swap])
+
+  const handleClearSelectedEmails = useCallback(() => {
+    setSelectedEmails([])
+  }, [])
+
+  const inviteCapacityLeft = useMemo(() => {
+    const currentCount = group?.accounts?.length ?? 0
+    return Math.max(0, FAMILY_GROUP_CAPACITY - currentCount)
+  }, [group?.accounts])
+
+  const swapNewCapacityLeft = useMemo(() => {
+    const currentCount = group?.accounts?.length ?? 0
+    const afterRemoval = currentCount - selectedEmails.length
+    return Math.max(0, Math.min(FAMILY_GROUP_MAX_SUB_MEMBERS, FAMILY_GROUP_CAPACITY - afterRemoval))
+  }, [group?.accounts, selectedEmails.length])
+
+  const handleSelectAllInviteEmails = useCallback(() => {
+    const limit = Math.min(inviteCapacityLeft, availableAccountOptions.length)
+    if (limit <= 0) {
+      msg.warning('家庭组已满（上限 6 人）')
+      return
+    }
+    setSelectedEmails(availableAccountOptions.slice(0, limit).map((option) => option.value))
+  }, [availableAccountOptions, inviteCapacityLeft, msg])
+
+  const handleSelectAllSwapManualEmails = useCallback(() => {
+    const limit = Math.min(swapNewCapacityLeft, availableAccountOptions.length)
+    if (limit <= 0) {
+      msg.warning('已达到家庭组上限，请先增加要移除的成员')
+      return
+    }
+    swap.setSwapManualEmails(availableAccountOptions.slice(0, limit).map((option) => option.value))
+  }, [availableAccountOptions, msg, swap, swapNewCapacityLeft])
+
+  const handleClearSwapManualEmails = useCallback(() => {
+    swap.setSwapManualEmails([])
+  }, [swap])
   const selectedAccount = useMemo(
     () => (group?.accounts ?? []).find((account) => account.id === selectedAccountId) ?? null,
     [group?.accounts, selectedAccountId],
@@ -506,16 +567,24 @@ export function useGroupDetailController(groupId: number) {
     handleBatchLaunch,
     handleBatchOAuth,
     handleBatchStop,
+    handleClearSelectedEmails,
+    handleClearStatus,
+    handleClearSwapManualEmails,
     handleCopyOAuthJson,
     handleDownloadOAuth,
     handleEmailSearch,
     handleFieldModalOk,
+    handleMarkUnusable,
     handleOAuth,
     handleOperationClick,
     handlePhoneVerify,
     handleRemoveFromGroup,
+    handleSelectAllInviteEmails,
     handleSelectAllMembers,
+    handleSelectAllSwapManualEmails,
     handleToggleBrowser,
+    inviteCapacityLeft,
+    swapNewCapacityLeft,
     loadGroup,
     loading,
     masked,

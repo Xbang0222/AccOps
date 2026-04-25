@@ -2,6 +2,9 @@ import type { AutomationOperationDefinition } from '@/features/automation/operat
 import type { StepMsg } from '@/hooks/useAutomationWs'
 import type { Account, Group } from '@/types'
 
+export const FAMILY_GROUP_CAPACITY = 6
+export const FAMILY_GROUP_MAX_SUB_MEMBERS = 5
+
 export interface AccountOpState {
   runningOpKey: string | null
   steps: StepMsg[]

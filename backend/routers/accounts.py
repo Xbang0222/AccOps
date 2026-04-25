@@ -163,6 +163,22 @@ def delete_account(account_id: int, svc: AccountService = Depends(get_account_se
     return {"message": "账号删除成功"}
 
 
+@router.post("/{account_id}/mark-unusable")
+def mark_unusable(account_id: int, svc: AccountService = Depends(get_account_service)):
+    """手动标记账号为「无法使用」"""
+    if not svc.mark_unusable(account_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="账号不存在")
+    return {"message": "已标记为无法使用"}
+
+
+@router.post("/{account_id}/clear-status")
+def clear_status(account_id: int, svc: AccountService = Depends(get_account_service)):
+    """清除状态标记，恢复正常"""
+    if not svc.clear_status(account_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="账号不存在")
+    return {"message": "已恢复正常状态"}
+
+
 @router.get("/{account_id}/totp")
 def get_totp_code(account_id: int, svc: AccountService = Depends(get_account_service)):
     """获取账号的 TOTP 验证码"""

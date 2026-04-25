@@ -1,6 +1,7 @@
 import { Button, Flex, Space, Tag, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
+  ClockCircleOutlined,
   CopyOutlined,
   CrownOutlined,
   DeleteOutlined,
@@ -10,12 +11,14 @@ import {
   LockOutlined,
   LoginOutlined,
   PoweroffOutlined,
+  StopOutlined,
   TeamOutlined,
+  UndoOutlined,
   UserOutlined,
-  ClockCircleOutlined,
 } from '@ant-design/icons'
 
 import type { Account } from '@/types'
+import { isAbnormalPoolStatus } from '@/constants/accountStatus'
 import { maskEmail } from '@/utils/mask'
 
 const { Text } = Typography
@@ -24,12 +27,14 @@ interface CreateAccountTableColumnsOptions {
   browserLoading: Set<number>
   browserRunning: Set<number>
   masked: boolean
+  onClearStatus: (id: number) => void
   onCopyFullAccount: (account: Account) => void
   onCopyText: (text: string, label: string) => void
   onCopyTotpCode: (secret: string) => void
   onDelete: (id: number) => void
   onEdit: (account: Account) => void
   onLaunchAndLogin: (account: Account) => void
+  onMarkUnusable: (id: number) => void
   onStopBrowser: (accountId: number) => void
 }
 
@@ -37,12 +42,14 @@ export function createAccountTableColumns({
   browserLoading,
   browserRunning,
   masked,
+  onClearStatus,
   onCopyFullAccount,
   onCopyText,
   onCopyTotpCode,
   onDelete,
   onEdit,
   onLaunchAndLogin,
+  onMarkUnusable,
   onStopBrowser,
 }: CreateAccountTableColumnsOptions): ColumnsType<Account> {
   return [
@@ -152,7 +159,7 @@ export function createAccountTableColumns({
     {
       title: '操作',
       key: 'actions',
-      width: 210,
+      width: 240,
       fixed: 'right',
       render: (_, record) => {
         const isRunning = browserRunning.has(record.id)
@@ -193,6 +200,15 @@ export function createAccountTableColumns({
             <Tooltip title="编辑">
               <Button type="text" size="small" icon={<EditOutlined style={{ color: '#8c8c8c' }} />} onClick={() => onEdit(record)} />
             </Tooltip>
+            {isAbnormalPoolStatus(record.pool_status) ? (
+              <Tooltip title="恢复正常">
+                <Button type="text" size="small" icon={<UndoOutlined style={{ color: '#52c41a' }} />} onClick={() => onClearStatus(record.id)} />
+              </Tooltip>
+            ) : (
+              <Tooltip title="标记无法使用">
+                <Button type="text" size="small" icon={<StopOutlined style={{ color: '#ff4d4f', opacity: 0.6 }} />} onClick={() => onMarkUnusable(record.id)} />
+              </Tooltip>
+            )}
             <Tooltip title="删除">
               <Button type="text" size="small" icon={<DeleteOutlined style={{ color: '#ff4d4f' }} />} onClick={() => onDelete(record.id)} />
             </Tooltip>

@@ -1,5 +1,7 @@
 /** 数据类型定义 */
 
+import type { PoolStatus } from '@/constants/accountStatus'
+
 export interface Account {
   id: number;
   email: string;
@@ -19,7 +21,7 @@ export interface Account {
   notes?: string;
   retired_at?: string;
   pool_use_count?: number;
-  pool_status?: string;  // "" | "retired" | "unusable"
+  pool_status?: PoolStatus;
   pool_last_used_at?: string;
   created_at?: string;
   updated_at?: string;

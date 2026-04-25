@@ -205,3 +205,23 @@ class AccountService:
             .all()
         )
         return [r[0] for r in rows]
+
+    def mark_unusable(self, account_id: int) -> bool:
+        """手动标记账号为「无法使用」"""
+        account = self.db.get(Account, account_id)
+        if not account:
+            return False
+        account.pool_status = "unusable"
+        account.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        return True
+
+    def clear_status(self, account_id: int) -> bool:
+        """清除账号状态标记，恢复正常"""
+        account = self.db.get(Account, account_id)
+        if not account:
+            return False
+        account.pool_status = None
+        account.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        return True

@@ -1,9 +1,23 @@
-import { Button, Input, Modal, Select, Space, Typography } from 'antd'
+import { Input, Modal, Select, Space, Typography } from 'antd'
 
 import type { AutomationOperationDefinition } from '@/features/automation/operationMeta'
 import type { GroupMemberOption } from '../utils'
+import { SelectAllToggle } from './SelectAllToggle'
 
 const { Text } = Typography
+
+export interface GroupCapacityInfo {
+  invite: number
+  swapNew: number
+}
+
+export interface GroupSelectAllCallbacks {
+  invite: () => void
+  members: () => void
+  swapManual: () => void
+  clearSelectedEmails: () => void
+  clearSwapManualEmails: () => void
+}
 
 interface GroupOperationModalProps {
   activeOp: AutomationOperationDefinition | null
@@ -13,6 +27,8 @@ interface GroupOperationModalProps {
   memberOptions: GroupMemberOption[]
   selectedEmails: string[]
   swapManualEmails: string[]
+  capacity: GroupCapacityInfo
+  selectAll: GroupSelectAllCallbacks
   onAvailableAccountSearch: (value: string) => void
   onCancel: () => void
   onChangeFormValue: (name: string, value: string) => void
@@ -20,7 +36,13 @@ interface GroupOperationModalProps {
   onChangeSwapManualEmails: (emails: string[]) => void
   onOk: () => void
   onSearchEmails: (value: string) => void
-  onSelectAllMembers: () => void
+}
+
+const toggleRowStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 6,
 }
 
 export function GroupOperationModal({
@@ -31,6 +53,8 @@ export function GroupOperationModal({
   memberOptions,
   selectedEmails,
   swapManualEmails,
+  capacity,
+  selectAll,
   onAvailableAccountSearch,
   onCancel,
   onChangeFormValue,
@@ -38,7 +62,6 @@ export function GroupOperationModal({
   onChangeSwapManualEmails,
   onOk,
   onSearchEmails,
-  onSelectAllMembers,
 }: GroupOperationModalProps) {
   return (
     <Modal
@@ -55,6 +78,18 @@ export function GroupOperationModal({
       <div style={{ marginTop: 12 }}>
         {activeOp?.key === 'family-invite' ? (
           <>
+            <div style={toggleRowStyle}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                家庭组剩余 {capacity.invite} 个空位（上限 6 人）
+              </Text>
+              <SelectAllToggle
+                options={availableAccountOptions}
+                selected={selectedEmails}
+                onSelectAll={selectAll.invite}
+                onClear={selectAll.clearSelectedEmails}
+                limit={capacity.invite}
+              />
+            </div>
             <Select
               mode="multiple"
               style={{ width: '100%' }}
@@ -73,33 +108,49 @@ export function GroupOperationModal({
               notFoundContent={availableAccountsLoading ? '搜索中...' : '无匹配账号，可直接输入邮箱回车添加'}
             />
             <Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
-              下拉列表仅显示未加入家庭组的账号，也可直接输入外部邮箱
+              下拉列表仅显示未加入家庭组的账号，全选仅选中当前下拉中显示的可用账号
             </Text>
           </>
         ) : null}
 
         {activeOp?.key === 'family-remove' ? (
-          <Select
-            mode="multiple"
-            style={{ width: '100%' }}
-            placeholder="选择要移除的成员"
-            value={selectedEmails}
-            onChange={onChangeSelectedEmails}
-            options={memberOptions}
-            optionFilterProp="label"
-          />
+          <>
+            <div style={toggleRowStyle}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                选择要移除的成员
+              </Text>
+              <SelectAllToggle
+                options={memberOptions}
+                selected={selectedEmails}
+                onSelectAll={selectAll.members}
+                onClear={selectAll.clearSelectedEmails}
+              />
+            </div>
+            <Select
+              mode="multiple"
+              style={{ width: '100%' }}
+              placeholder="选择要移除的成员"
+              value={selectedEmails}
+              onChange={onChangeSelectedEmails}
+              options={memberOptions}
+              optionFilterProp="label"
+            />
+          </>
         ) : null}
 
         {activeOp?.key === 'family-swap' ? (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div style={toggleRowStyle}>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   要移除的成员:
                 </Text>
-                <Button type="link" size="small" onClick={onSelectAllMembers} style={{ padding: 0, height: 'auto', fontSize: 12 }}>
-                  全选
-                </Button>
+                <SelectAllToggle
+                  options={memberOptions}
+                  selected={selectedEmails}
+                  onSelectAll={selectAll.members}
+                  onClear={selectAll.clearSelectedEmails}
+                />
               </div>
               <Select
                 mode="multiple"
@@ -112,9 +163,18 @@ export function GroupOperationModal({
               />
             </div>
             <div>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-                新成员:
-              </Text>
+              <div style={toggleRowStyle}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  新成员:
+                </Text>
+                <SelectAllToggle
+                  options={availableAccountOptions}
+                  selected={swapManualEmails}
+                  onSelectAll={selectAll.swapManual}
+                  onClear={selectAll.clearSwapManualEmails}
+                  limit={capacity.swapNew}
+                />
+              </div>
               <Select
                 mode="tags"
                 style={{ width: '100%' }}

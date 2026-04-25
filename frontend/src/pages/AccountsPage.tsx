@@ -31,6 +31,8 @@ import {
   createBrowserProfile,
   launchBrowser,
   stopBrowser,
+  markAccountUnusable,
+  clearAccountStatus,
 } from '@/api';
 import { createAccountTableColumns } from '@/features/accountsTableColumns';
 import { createDefaultBrowserProfile } from '@/features/browser/browserProfileDefaults';
@@ -181,6 +183,26 @@ const AccountsPage: React.FC = () => {
     });
   };
 
+  const handleMarkUnusable = async (id: number) => {
+    try {
+      await markAccountUnusable(id);
+      msg.success('已标记为无法使用');
+      loadAccounts();
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '标记失败'));
+    }
+  };
+
+  const handleClearStatus = async (id: number) => {
+    try {
+      await clearAccountStatus(id);
+      msg.success('已恢复正常状态');
+      loadAccounts();
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '操作失败'));
+    }
+  };
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(() => msg.success(`${label}已复制`));
   };
@@ -246,6 +268,8 @@ const AccountsPage: React.FC = () => {
     onEdit: handleEdit,
     onLaunchAndLogin: handleLaunchAndLogin,
     onStopBrowser: handleStopBrowser,
+    onMarkUnusable: handleMarkUnusable,
+    onClearStatus: handleClearStatus,
   });
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {

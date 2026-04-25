@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import type { GroupMemberOption } from './utils'
 
@@ -40,11 +40,14 @@ export function useSwapOperation({
     return true
   }, [executeViaWs, msg, swapManualEmails])
 
-  return {
-    executeSwap,
-    handleSelectAllMembers,
-    resetSwapState,
-    setSwapManualEmails,
-    swapManualEmails,
-  }
+  return useMemo(
+    () => ({
+      executeSwap,
+      handleSelectAllMembers,
+      resetSwapState,
+      setSwapManualEmails,
+      swapManualEmails,
+    }),
+    [executeSwap, handleSelectAllMembers, resetSwapState, swapManualEmails],
+  )
 }
