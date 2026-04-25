@@ -21,6 +21,7 @@ import {
   EyeOutlined,
   EyeInvisibleOutlined,
   ImportOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import {
   getAccounts,
@@ -46,6 +47,7 @@ import { getErrorMessage } from '@/utils/http';
 import AccountModal from '@/components/AccountModal';
 import ResizableTitle from '@/components/ResizableTitle';
 import { generateTOTP } from '@/utils/totp';
+import { downloadAccountsTxt } from '@/utils/exportAccount';
 import { useAutomation, useAutomationEvents } from '@/contexts/automationContext';
 
 const { Text } = Typography;
@@ -76,6 +78,9 @@ const AccountsPage: React.FC = () => {
   const [browserRunning, setBrowserRunning] = useState<Set<number>>(new Set());
   const [browserLoading, setBrowserLoading] = useState<Set<number>>(new Set());
   const [profileMap, setProfileMap] = useState<Record<number, number>>({});
+
+  // 批量导出
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   const { execute: executeAutomation } = useAutomation();
   useAutomationEvents({
@@ -201,24 +206,45 @@ const AccountsPage: React.FC = () => {
     }
   };
 
+  const writeClipboard = (text: string, successMsg: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => msg.success(successMsg),
+      () => msg.error('复制失败，请检查浏览器剪贴板权限'),
+    );
+  };
+
   const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text).then(() => msg.success(`${label}已复制`));
+    writeClipboard(text, `${label}已复制`);
   };
 
   const copyFullAccount = (record: Account) => {
     const parts = [record.email, record.password, record.recovery_email || '', record.totp_secret || ''];
-    navigator.clipboard.writeText(parts.join('----')).then(() => msg.success('账号信息已复制'));
+    writeClipboard(parts.join('----'), '账号信息已复制');
   };
 
   const copyTOTPCode = (secret: string) => {
     try {
       const { code } = generateTOTP(secret);
-      navigator.clipboard.writeText(code).then(() => {
-        msg.success(`2FA 验证码已复制: ${code}`);
-      });
+      writeClipboard(code, `2FA 验证码已复制: ${code}`);
     } catch {
       msg.error('生成验证码失败');
     }
+  };
+
+  const handleExportSingle = (account: Account) => {
+    downloadAccountsTxt([account]);
+    msg.success('已导出 1 个账号');
+  };
+
+  const handleExportSelected = () => {
+    const idSet = new Set<number>(selectedRowKeys.map(Number));
+    const selected = accounts.filter((a) => idSet.has(a.id));
+    if (selected.length === 0) {
+      msg.warning('请先勾选要导出的账号');
+      return;
+    }
+    downloadAccountsTxt(selected);
+    msg.success(`已导出 ${selected.length} 个账号`);
   };
 
   const handleTableChange = (
@@ -264,6 +290,7 @@ const AccountsPage: React.FC = () => {
     onCopyTotpCode: copyTOTPCode,
     onDelete: handleDelete,
     onEdit: handleEdit,
+    onExportAccount: handleExportSingle,
     onLaunchAndLogin: handleLaunchAndLogin,
     onStopBrowser: handleStopBrowser,
     onMarkUnusable: handleMarkUnusable,
@@ -333,6 +360,17 @@ const AccountsPage: React.FC = () => {
           <Tooltip title="批量导入">
             <Button type="text" icon={<ImportOutlined />} onClick={() => setImportVisible(true)} />
           </Tooltip>
+          <Tooltip title={selectedRowKeys.length === 0 ? '勾选账号后导出' : `导出已选 ${selectedRowKeys.length} 个账号 (.txt)`}>
+            <Button
+              type={selectedRowKeys.length > 0 ? 'primary' : 'text'}
+              icon={<DownloadOutlined />}
+              disabled={selectedRowKeys.length === 0}
+              onClick={handleExportSelected}
+              aria-label="批量导出已选账号"
+            >
+              {selectedRowKeys.length > 0 ? `导出 ${selectedRowKeys.length}` : null}
+            </Button>
+          </Tooltip>
           <Tooltip title={ownerOnly ? '显示全部账号' : '仅显示创建者'}>
             <Button
               type={ownerOnly ? 'primary' : 'text'}
@@ -359,6 +397,11 @@ const AccountsPage: React.FC = () => {
           scroll={{ x: 1100, y: 'calc(100vh - 260px)' }}
           pagination={false}
           onChange={handleTableChange}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+            preserveSelectedRowKeys: true,
+          }}
         />
       </div>
 

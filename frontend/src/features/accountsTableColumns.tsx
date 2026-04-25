@@ -5,6 +5,7 @@ import {
   CopyOutlined,
   CrownOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   KeyOutlined,
   LoadingOutlined,
@@ -33,6 +34,7 @@ interface CreateAccountTableColumnsOptions {
   onCopyTotpCode: (secret: string) => void
   onDelete: (id: number) => void
   onEdit: (account: Account) => void
+  onExportAccount: (account: Account) => void
   onLaunchAndLogin: (account: Account) => void
   onMarkUnusable: (id: number) => void
   onStopBrowser: (accountId: number) => void
@@ -48,6 +50,7 @@ export function createAccountTableColumns({
   onCopyTotpCode,
   onDelete,
   onEdit,
+  onExportAccount,
   onLaunchAndLogin,
   onMarkUnusable,
   onStopBrowser,
@@ -159,7 +162,7 @@ export function createAccountTableColumns({
     {
       title: '操作',
       key: 'actions',
-      width: 240,
+      width: 272,
       fixed: 'right',
       render: (_, record) => {
         const isRunning = browserRunning.has(record.id)
@@ -196,6 +199,9 @@ export function createAccountTableColumns({
             ) : null}
             <Tooltip title="复制全部信息">
               <Button type="text" size="small" icon={<CopyOutlined style={{ color: '#1677ff' }} />} onClick={() => onCopyFullAccount(record)} />
+            </Tooltip>
+            <Tooltip title="导出此账号 (.txt)">
+              <Button type="text" size="small" icon={<DownloadOutlined style={{ color: '#13c2c2' }} />} onClick={() => onExportAccount(record)} />
             </Tooltip>
             <Tooltip title="编辑">
               <Button type="text" size="small" icon={<EditOutlined style={{ color: '#8c8c8c' }} />} onClick={() => onEdit(record)} />
