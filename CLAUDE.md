@@ -190,16 +190,13 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 1. 自动启动浏览器（如未运行）
 2. 批量移除旧子号（rapt + RPC 批量移除）
-3. 选取新子号（号池自动选取 或 手动指定）
+3. 接收手动指定的新子号邮箱列表（`specific_emails`，必填）
 4. 批量邀请新子号
 5. 登录子号刷新 cookies
 6. 用 cookies 自动接受邀请
 7. 完整 discover 同步（与"同步"按钮一致）
 
-**两种模式:**
-
-- `pool` — 从号池自动选取，指定数量
-- `manual` — 手动指定邮箱列表
+> 号池管理已在 b70bda7 移除，换号需显式提供邮箱列表；移除子号会被标记为 `retired`。
 
 **关键改进:** 换号完成后执行完整的 `discover_family_by_cookies` + `sync_group_from_discover`，确保数据库与 Google 实际状态完全一致。
 
