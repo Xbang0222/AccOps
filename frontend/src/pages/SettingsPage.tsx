@@ -75,14 +75,17 @@ function SettingsPage() {
     }
   };
 
-  const handleToggleDebug = (checked: boolean) =>
-    updateSetting('debug_mode', checked, checked ? '调试模式已开启' : '调试模式已关闭');
+  const handleToggleDebug = (checked: boolean) => {
+    void updateSetting('debug_mode', checked, checked ? '调试模式已开启' : '调试模式已关闭');
+  };
 
-  const handleToggleHeadless = (checked: boolean) =>
-    updateSetting('headless_mode', checked, checked ? '无头模式已开启' : '无头模式已关闭');
+  const handleToggleHeadless = (checked: boolean) => {
+    void updateSetting('headless_mode', checked, checked ? '无头模式已开启' : '无头模式已关闭');
+  };
 
-  const handleToggleAgeVerify = (checked: boolean) =>
-    updateSetting('age_verify_enabled', checked, checked ? '年龄认证已开启' : '年龄认证已关闭');
+  const handleToggleAgeVerify = (checked: boolean) => {
+    void updateSetting('age_verify_enabled', checked, checked ? '年龄认证已开启' : '年龄认证已关闭');
+  };
 
   if (loading) {
     return (

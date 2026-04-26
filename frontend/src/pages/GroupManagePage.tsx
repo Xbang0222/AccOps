@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  App,
   Card,
   Button,
   Modal,
   Form,
   Input,
   Select,
-  message,
   Tag,
   Typography,
   Flex,
@@ -48,6 +48,7 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 const GroupManagePage: React.FC = () => {
+  const { message } = App.useApp();
   const { token } = antTheme.useToken();
   const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
@@ -61,8 +62,9 @@ const GroupManagePage: React.FC = () => {
   const loadIdRef = useRef(0);
 
   useEffect(() => {
-    loadGroups();
-    loadAccounts();
+    void loadGroups();
+    void loadAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSearchChange = (value: string) => {
@@ -117,7 +119,7 @@ const GroupManagePage: React.FC = () => {
         try {
           await deleteGroup(id);
           message.success('分组已删除');
-          loadGroups();
+          void loadGroups();
         } catch {
           message.error('删除失败');
         }
@@ -155,7 +157,7 @@ const GroupManagePage: React.FC = () => {
         message.success('分组创建成功');
       }
       setModalVisible(false);
-      loadGroups();
+      void loadGroups();
     } catch (error: unknown) {
       message.error(getErrorMessage(error, '保存失败'));
     }

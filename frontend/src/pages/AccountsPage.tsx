@@ -195,7 +195,7 @@ const AccountsPage: React.FC = () => {
       title: '确认删除', content: '确定要删除这个账号吗？',
       okText: '删除', okType: 'danger', cancelText: '取消',
       onOk: async () => {
-        try { await deleteAccount(id); msg.success('已删除'); loadAccounts(); }
+        try { await deleteAccount(id); msg.success('已删除'); void loadAccounts(); }
         catch { msg.error('删除失败'); }
       },
     });
@@ -205,7 +205,7 @@ const AccountsPage: React.FC = () => {
     try {
       await markAccountUnusable(id);
       msg.success('已标记为无法使用');
-      loadAccounts();
+      void loadAccounts();
     } catch (error: unknown) {
       msg.error(getErrorMessage(error, '标记失败'));
     }
@@ -215,7 +215,7 @@ const AccountsPage: React.FC = () => {
     try {
       await clearAccountStatus(id);
       msg.success('已恢复正常状态');
-      loadAccounts();
+      void loadAccounts();
     } catch (error: unknown) {
       msg.error(getErrorMessage(error, '操作失败'));
     }
@@ -328,7 +328,7 @@ const AccountsPage: React.FC = () => {
       else if (data.skipped > 0) msg.warning(data.message);
       else msg.error(data.message);
       if (data.success > 0) {
-        setImportVisible(false); setImportText(''); loadAccounts();
+        setImportVisible(false); setImportText(''); void loadAccounts();
       }
     } catch (error: unknown) {
       msg.error(getErrorMessage(error, '导入失败'));
@@ -552,13 +552,13 @@ const AccountsPage: React.FC = () => {
         account={editingAccount}
         tags={tags}
         onClose={() => setModalVisible(false)}
-        onSuccess={() => loadAccounts()}
+        onSuccess={() => { void loadAccounts(); }}
       />
 
       <TagManageModal
         visible={tagModalVisible}
         onClose={() => setTagModalVisible(false)}
-        onChange={() => { loadTags(); loadAccounts(); }}
+        onChange={() => { void loadTags(); void loadAccounts(); }}
       />
 
       <Modal

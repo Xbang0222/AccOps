@@ -3,6 +3,7 @@ import { App as AntApp, ConfigProvider, message } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { RouterProvider } from 'react-router-dom'
 
+import ErrorBoundary from '@/components/ErrorBoundary'
 import { AutomationProvider } from '@/contexts/AutomationProvider'
 import LoginPage from '@/pages/LoginPage'
 import { createRouter } from '@/router'
@@ -44,9 +45,11 @@ function AppInner() {
 }
 
 const App: React.FC = () => (
-  <ThemeProvider>
-    <AppInner />
-  </ThemeProvider>
+  <ErrorBoundary>
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
+  </ErrorBoundary>
 )
 
 export default App

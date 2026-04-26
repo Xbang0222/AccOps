@@ -32,6 +32,12 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
         def first(self):
             return self._result
 
+        def all(self):
+            # 当前 WebSocket handler 用 .all() 拉取 BrowserProfile 列表
+            if self._result is None:
+                return []
+            return [self._result] if not isinstance(self._result, list) else self._result
+
     class _FakeDb:
         def __init__(self, account, profile) -> None:
             self._account = account
