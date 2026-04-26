@@ -170,7 +170,6 @@ export function createAccountTableColumns({
       title: '操作',
       key: 'actions',
       width: 272,
-      fixed: 'right',
       render: (_, record) => {
         const isRunning = browserRunning.has(record.id)
         const isBrowserLoading = browserLoading.has(record.id)
