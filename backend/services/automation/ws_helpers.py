@@ -1,7 +1,7 @@
 """自动化 WebSocket 基础设施 (步骤回调 / 队列转发 / 取消轮询 / 任务结果)。
 
-从 routers/automation_helpers.py 下沉到 services 层, 切断 services→routers 反向依赖。
-routers/automation_helpers.py 改为从此模块 re-export, 现有调用方无感。
+公开 API: create_step_handler / drain_task_queue / get_task_result / flush_step_messages。
+内部细节: _poll_cancel_command / _sanitize_error。
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from services.automation.types import CancellationToken
 logger = logging.getLogger(__name__)
 
 
-def _create_step_handler(msg_queue: queue.Queue, step_offset: int = 0):
+def create_step_handler(msg_queue: queue.Queue, step_offset: int = 0):
     """创建带步骤偏移的步骤回调。"""
     def on_step(step_data: dict):
         if step_offset and step_data.get("step"):
@@ -28,10 +28,14 @@ def _create_step_handler(msg_queue: queue.Queue, step_offset: int = 0):
     return on_step
 
 
-async def _flush_step_messages(ws: WebSocket, msg_queue: queue.Queue):
+async def flush_step_messages(ws: WebSocket, msg_queue: queue.Queue):
     """将队列中的步骤消息转发给前端。"""
-    while not msg_queue.empty():
-        message = msg_queue.get_nowait()
+    # queue.empty() 与 get_nowait() 之间存在竞态; 以 try/except 收口防御 queue.Empty
+    while True:
+        try:
+            message = msg_queue.get_nowait()
+        except queue.Empty:
+            break
         if message.get("type") != "result":
             await ws.send_json(message)
 
@@ -59,14 +63,14 @@ async def _poll_cancel_command(ws: WebSocket, cancel_token: CancellationToken) -
         return False
 
 
-async def _drain_task_queue(ws: WebSocket, msg_queue: queue.Queue, task, cancel_token: CancellationToken) -> bool:
+async def drain_task_queue(ws: WebSocket, msg_queue: queue.Queue, task, cancel_token: CancellationToken) -> bool:
     """在任务执行期间持续转发步骤, 并监听取消信号。"""
     while not task.done():
-        await _flush_step_messages(ws, msg_queue)
+        await flush_step_messages(ws, msg_queue)
         if not await _poll_cancel_command(ws, cancel_token):
             return False
 
-    await _flush_step_messages(ws, msg_queue)
+    await flush_step_messages(ws, msg_queue)
     return True
 
 
@@ -77,7 +81,7 @@ def _sanitize_error(exc: Exception) -> str:
     return msg
 
 
-def _get_task_result(task):
+def get_task_result(task):
     """提取已完成任务的结果与错误消息。"""
     exception = task.exception()
     if exception:
@@ -86,10 +90,8 @@ def _get_task_result(task):
 
 
 __all__ = [
-    "_create_step_handler",
-    "_flush_step_messages",
-    "_poll_cancel_command",
-    "_drain_task_queue",
-    "_sanitize_error",
-    "_get_task_result",
+    "create_step_handler",
+    "drain_task_queue",
+    "flush_step_messages",
+    "get_task_result",
 ]

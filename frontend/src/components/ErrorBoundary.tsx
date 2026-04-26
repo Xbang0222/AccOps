@@ -15,6 +15,21 @@ const INITIAL_STATE: ErrorBoundaryState = {
   errorMessage: '',
 };
 
+// 与 ThemeProvider 的 STORAGE_KEY 保持一致 (避免 ErrorBoundary 触发时 ThemeProvider 已 crash)
+const THEME_STORAGE_KEY = 'theme-mode';
+
+function resolveDarkMode(): boolean {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === 'dark') return true;
+    if (saved === 'light') return false;
+  } catch {
+    // localStorage 在某些隐私模式下不可用, 直接走系统偏好
+  }
+  return typeof window !== 'undefined'
+    && window.matchMedia?.('(prefers-color-scheme: dark)').matches === true;
+}
+
 // fallback 不依赖 antd: ErrorBoundary 处于 ConfigProvider/AntApp 之外,
 // 而且当 ThemeProvider/ConfigProvider 自身抛错时, antd 组件可能根本渲染不出来。
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -40,6 +55,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render(): ReactNode {
     if (this.state.hasError) {
+      const isDark = resolveDarkMode();
+      const palette = isDark
+        ? { bg: '#141414', text: '#e6e6e6', muted: '#a6a6a6' }
+        : { bg: '#ffffff', text: '#1f1f1f', muted: '#595959' };
       return (
         <div
           role="alert"
@@ -52,8 +71,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             padding: 24,
             fontFamily:
               '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-            color: '#1f1f1f',
-            background: '#ffffff',
+            color: palette.text,
+            background: palette.bg,
             textAlign: 'center',
           }}
         >
@@ -64,7 +83,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           <p
             style={{
               fontSize: 14,
-              color: '#595959',
+              color: palette.muted,
               margin: '0 0 24px',
               maxWidth: 480,
               wordBreak: 'break-word',

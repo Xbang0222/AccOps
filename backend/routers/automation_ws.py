@@ -22,11 +22,6 @@ from core.constants import (
 )
 from models.database import get_db_session
 from models.orm import Account, BrowserProfile
-from routers.automation_helpers import (
-    _create_step_handler,
-    _drain_task_queue,
-    _get_task_result,
-)
 from services.automation import (
     CancellationToken,
     CancelledError,
@@ -40,13 +35,18 @@ from services.automation import (
     run_remove_family_member,
     run_send_family_invite,
 )
-from services.automation.orchestrator.swap import _handle_family_swap
+from services.automation.orchestrator.swap import handle_family_swap
 from services.automation.persistence import (
     decrypt_field,
     handle_login_success,
     save_browser_cookies,
     save_oauth_credential,
     save_subscription_status,
+)
+from services.automation.ws_helpers import (
+    create_step_handler,
+    drain_task_queue,
+    get_task_result,
 )
 from services.browser import browser_manager
 from services.group_sync import sync_group_after_action, sync_group_from_discover
@@ -70,7 +70,7 @@ async def _run_batch_operation(
     fail_list = []
 
     for index, item in enumerate(items):
-        on_step = _create_step_handler(msg_queue, index * 100)
+        on_step = create_step_handler(msg_queue, index * 100)
         on_step({
             "type": "step",
             "name": f"--- {action_label} {item} ({index + 1}/{total}) ---",
@@ -79,10 +79,10 @@ async def _run_batch_operation(
         })
 
         task = asyncio.ensure_future(task_factory(item, on_step))
-        if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+        if not await drain_task_queue(ws, msg_queue, task, cancel_token):
             return False
 
-        result, error_message = _get_task_result(task)
+        result, error_message = get_task_result(task)
         if result and result.success:
             success_count += 1
             on_success(item, result)
@@ -202,7 +202,7 @@ async def automation_websocket(ws: WebSocket):
             # 用 queue 实现线程安全的步骤推送
             msg_queue: queue.Queue = queue.Queue()
             cancel_token = CancellationToken()
-            on_step = _create_step_handler(msg_queue)
+            on_step = create_step_handler(msg_queue)
 
             # 启动自动化任务
             task = None
@@ -343,7 +343,7 @@ async def automation_websocket(ws: WebSocket):
                 swap_remove = [e.strip() for e in data.get("remove_emails", "").split(",") if e.strip()]
                 swap_count = int(data.get("new_count", "0") or "0")
                 swap_specific = [e.strip() for e in data.get("specific_emails", "").split(",") if e.strip()]
-                if not await _handle_family_swap(
+                if not await handle_family_swap(
                     ws=ws,
                     msg_queue=msg_queue,
                     cancel_token=cancel_token,
@@ -362,11 +362,11 @@ async def automation_websocket(ws: WebSocket):
                 continue
 
             # 实时转发步骤消息，同时监听前端取消命令
-            if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+            if not await drain_task_queue(ws, msg_queue, task, cancel_token):
                 return
 
             # 检查任务异常
-            result, error_message = _get_task_result(task)
+            result, error_message = get_task_result(task)
             if not result:
                 exc = task.exception()
                 if isinstance(exc, CancelledError):

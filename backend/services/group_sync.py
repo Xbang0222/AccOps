@@ -264,12 +264,21 @@ def _sync_member_discover(db: Session, account: Account, discover_result) -> Non
     manager_names = [member["name"] for member in discover_result.members if member.get("role") == "manager"]
     candidates = db.query(Account).filter(Account.family_group_id.isnot(None)).all()
 
+    # 一次性预加载候选账号关联的 Group, 避免双层循环内对每个 candidate 单独查询 (1+N → 1)
+    candidate_group_ids = {c.family_group_id for c in candidates if c.family_group_id}
+    groups_map: dict[int, Group] = {}
+    if candidate_group_ids:
+        groups_map = {
+            g.id: g
+            for g in db.query(Group).filter(Group.id.in_(candidate_group_ids)).all()
+        }
+
     for manager_name in manager_names:
         manager_name_lower = manager_name.lower()
         for candidate in candidates:
             email_prefix = candidate.email.split("@")[0].lower()
             if email_prefix in manager_name_lower or manager_name_lower in candidate.email.lower():
-                group = db.query(Group).filter(Group.id == candidate.family_group_id).first()
+                group = groups_map.get(candidate.family_group_id)
                 if group and group.main_account_id == candidate.id:
                     account.family_group_id = group.id
                     account.updated_at = datetime.now(UTC)

@@ -88,6 +88,16 @@ const GroupManagePage: React.FC = () => {
     void loadAccounts();
   }, [loadGroups, loadAccounts]);
 
+  // 卸载时清掉防抖 timer, 避免组件 unmount 后回调仍触发 setGroups
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
   const handleSearchChange = (value: string) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {

@@ -96,6 +96,8 @@ class AccountService:
         query = self.db.query(Account)
 
         if search:
+            # 注: 前后通配 ILIKE 走全表扫描, 不利用 ix_accounts_email_lower 函数索引;
+            # 当前数据规模 (本地单用户) 可接受, 数据量上来后可考虑 pg_trgm + GIN 索引。
             like = f"%{search}%"
             query = query.filter(Account.email.ilike(like) | Account.notes.ilike(like))
         if owner_only:
@@ -149,6 +151,7 @@ class AccountService:
 
         query = self.db.query(Account.id, Account.email).filter(*base_filters)
         if search:
+            # 同 get_all: 前后通配 ILIKE 不利用索引, 当前规模可接受
             query = query.filter(Account.email.ilike(f"%{search}%"))
         query = query.order_by(Account.email).limit(limit)
         return [{"id": row.id, "email": row.email} for row in query.all()]

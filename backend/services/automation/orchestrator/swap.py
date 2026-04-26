@@ -33,10 +33,10 @@ from services.automation.runners import (
 )
 from services.automation.types import CancellationToken
 from services.automation.ws_helpers import (
-    _create_step_handler,
-    _drain_task_queue,
-    _flush_step_messages,
-    _get_task_result,
+    create_step_handler,
+    drain_task_queue,
+    flush_step_messages,
+    get_task_result,
 )
 from services.browser import browser_manager
 from services.group_sync import sync_group_after_action, sync_group_from_discover
@@ -153,16 +153,16 @@ async def _swap_phase_remove(
     for i, email in enumerate(remove_emails):
         if cancel_token.is_cancelled:
             return -1
-        step = _create_step_handler(msg_queue, i * 50)
+        step = create_step_handler(msg_queue, i * 50)
         step({"type": "step", "name": f"移除 {email}", "status": "running", "message": f"({i+1}/{len(remove_emails)})"})
 
         task = asyncio.ensure_future(
             run_remove_family_member(profile_id, email, password, totp_secret, on_step=step, cancel_token=cancel_token)
         )
-        if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+        if not await drain_task_queue(ws, msg_queue, task, cancel_token):
             return -1
 
-        result, error = _get_task_result(task)
+        result, error = get_task_result(task)
         if result and result.success:
             remove_success += 1
             sync_group_after_action(ACTION_FAMILY_REMOVE, account_id, True, result.message, {"member_email": email})
@@ -257,10 +257,10 @@ async def _swap_phase_login_and_accept(
             result = await run_auto_login(
                 sub_profile_id, email, info["password"], info["totp_secret"],
                 info["recovery_email"], verification_url,
-                on_step=_create_step_handler(msg_queue, 2000 + i * 100),
+                on_step=create_step_handler(msg_queue, 2000 + i * 100),
                 cancel_token=cancel_token,
             )
-            await _flush_step_messages(ws, msg_queue)
+            await flush_step_messages(ws, msg_queue)
 
             if result and result.success:
                 login_success += 1
@@ -380,7 +380,7 @@ async def _swap_phase_discover_sync(
     return verified_count
 
 
-async def _handle_family_swap(
+async def handle_family_swap(
     ws: WebSocket,
     msg_queue: queue.Queue,
     cancel_token: CancellationToken,
@@ -457,16 +457,16 @@ async def _handle_family_swap(
     for i, email in enumerate(selected_emails):
         if cancel_token.is_cancelled:
             break
-        step = _create_step_handler(msg_queue, 1000 + i * 50)
+        step = create_step_handler(msg_queue, 1000 + i * 50)
         step({"type": "step", "name": f"邀请 {email}", "status": "running", "message": f"({i+1}/{actual_count})"})
 
         task = asyncio.ensure_future(
             run_send_family_invite(profile_id, email, on_step=step, cancel_token=cancel_token)
         )
-        if not await _drain_task_queue(ws, msg_queue, task, cancel_token):
+        if not await drain_task_queue(ws, msg_queue, task, cancel_token):
             return False
 
-        result, error = _get_task_result(task)
+        result, error = get_task_result(task)
         if result and result.success:
             invite_success.append(email)
             sync_group_after_action(ACTION_FAMILY_INVITE, account_id, True, result.message, {"invite_email": email})

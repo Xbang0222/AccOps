@@ -11,9 +11,18 @@ from services.family_api import FamilyAPI, NoInvitationError, RPCError, TokenErr
 logger = logging.getLogger(__name__)
 
 
+def _check_cancelled(tracker: StepTracker, cancel_token) -> AutomationResult | None:
+    """若已被取消, 返回带 cancelled 标记的失败结果, 否则返回 None。"""
+    if cancel_token is not None and cancel_token.is_cancelled:
+        return tracker.result(False, "操作已被取消", step="cancelled")
+    return None
+
+
 def create_family_group_sync(page, on_step=None, cancel_token=None) -> AutomationResult:
     """创建家庭组 (纯 RPC)"""
     tracker = StepTracker("create_family", on_step)
+    if cancelled := _check_cancelled(tracker, cancel_token):
+        return cancelled
 
     tracker.step("提取 cookies", "info")
     cookies = browser_manager.get_cookies(get_profile_id_from_page(page))
@@ -41,6 +50,8 @@ def create_family_group_sync(page, on_step=None, cancel_token=None) -> Automatio
 def send_family_invite_sync(page, invite_email: str, on_step=None, cancel_token=None) -> AutomationResult:
     """发送家庭组邀请 (纯 RPC)"""
     tracker = StepTracker("send_invite", on_step)
+    if cancelled := _check_cancelled(tracker, cancel_token):
+        return cancelled
 
     tracker.step("提取 cookies", "info")
     cookies = browser_manager.get_cookies(get_profile_id_from_page(page))
@@ -64,6 +75,8 @@ def send_family_invite_sync(page, invite_email: str, on_step=None, cancel_token=
 def accept_family_invite_sync(page, on_step=None, cancel_token=None) -> AutomationResult:
     """接受家庭组邀请 (纯 RPC)"""
     tracker = StepTracker("accept_invite", on_step)
+    if cancelled := _check_cancelled(tracker, cancel_token):
+        return cancelled
 
     tracker.step("提取 cookies", "info")
     cookies = browser_manager.get_cookies(get_profile_id_from_page(page))
@@ -84,13 +97,6 @@ def accept_family_invite_sync(page, on_step=None, cancel_token=None) -> Automati
         return tracker.result(False, str(e), step="rpc")
     except Exception as e:
         return tracker.result(False, f"异常: {e}", step="error")
-
-
-def _check_cancelled(tracker: StepTracker, cancel_token) -> AutomationResult | None:
-    """若已被取消, 返回带 cancelled 标记的失败结果, 否则返回 None。"""
-    if cancel_token is not None and cancel_token.is_cancelled:
-        return tracker.result(False, "操作已被取消", step="cancelled")
-    return None
 
 
 def remove_family_member_sync(page, member_email: str, password: str = "",

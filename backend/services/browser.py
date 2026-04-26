@@ -97,6 +97,13 @@ class BrowserManager:
     def get_running_ids(self) -> list[int]:
         return list(self._instances.keys())
 
+    def find_profile_id_by_page(self, page) -> int | None:
+        """根据 DrissionPage 实例反查 profile_id, 找不到返回 None。"""
+        for pid, inst in self._instances.items():
+            if inst.page is page:
+                return pid
+        return None
+
     @staticmethod
     def _is_headless_mode() -> bool:
         from services.runtime_config import get_bool

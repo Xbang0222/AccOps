@@ -45,8 +45,8 @@ def _check_email_case_uniqueness() -> None:
     `CREATE UNIQUE INDEX` 会直接报错回滚整个迁移。这里提前检查并 raise，
     给运维明确的错误信息以便人工 dedupe 后再升级。
     """
-    # alembic 1.9+ 推荐 op.get_context().bind 替代 op.get_bind()
-    bind = op.get_context().bind
+    # 用 op.get_bind() 拿到当前迁移的 connection (alembic 标准 API, 跨主版本兼容)
+    bind = op.get_bind()
     rows = bind.execute(sa.text(
         "SELECT lower(email) AS lemail, count(*) AS cnt "
         "FROM accounts GROUP BY lower(email) HAVING count(*) > 1"

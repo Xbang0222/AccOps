@@ -9,15 +9,15 @@ from fastapi import WebSocketDisconnect
 
 from deps import create_access_token
 from models.orm import Account, BrowserProfile
-from routers.automation_helpers import (
-    _create_step_handler,
-    _get_task_result,
-)
 from routers.automation_ws import (
     automation_websocket,
 )
 from services.automation.persistence import (
     sync_account_state_after_login,
+)
+from services.automation.ws_helpers import (
+    create_step_handler,
+    get_task_result,
 )
 
 
@@ -71,27 +71,27 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
         async def close(self, code: int = 1000, reason: str | None = None) -> None:
             return None
 
-    async def test_create_step_handler_applies_offset(self) -> None:
+    async def testcreate_step_handler_applies_offset(self) -> None:
         message_queue = queue.Queue()
-        on_step = _create_step_handler(message_queue, 200)
+        on_step = create_step_handler(message_queue, 200)
 
         on_step({"type": "step", "step": 3, "name": "test"})
 
         self.assertEqual(message_queue.get_nowait()["step"], 203)
 
-    async def test_get_task_result_returns_result_without_error(self) -> None:
+    async def testget_task_result_returns_result_without_error(self) -> None:
         async def succeed():
             return "ok"
 
         task = asyncio.create_task(succeed())
         await task
 
-        result, error_message = _get_task_result(task)
+        result, error_message = get_task_result(task)
 
         self.assertEqual(result, "ok")
         self.assertEqual(error_message, "")
 
-    async def test_get_task_result_returns_error_message(self) -> None:
+    async def testget_task_result_returns_error_message(self) -> None:
         async def fail():
             raise RuntimeError("boom")
 
@@ -99,7 +99,7 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await task
 
-        result, error_message = _get_task_result(task)
+        result, error_message = get_task_result(task)
 
         self.assertIsNone(result)
         self.assertEqual(error_message, "boom")
@@ -163,7 +163,7 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
             "routers.automation_ws.browser_manager.is_running",
             return_value=True,
         ), patch("routers.automation_ws.run_auto_login", return_value=result), patch(
-            "routers.automation_ws._drain_task_queue",
+            "routers.automation_ws.drain_task_queue",
             side_effect=fake_drain_task_queue,
         ), patch("routers.automation_ws.handle_login_success") as handle_login_success_mock:
             await automation_websocket(ws)

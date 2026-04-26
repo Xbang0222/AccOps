@@ -53,7 +53,7 @@ def _read_from_db(key: str) -> str:
             row = db.query(Config).filter(Config.key == key).first()
             return row.value if row else default
     except Exception as e:
-        logger.warning(f"[runtime_config] 读取 {key} 失败: {e}")
+        logger.warning("[runtime_config] 读取 %s 失败: %s", key, e)
         return default
 
 
@@ -75,7 +75,8 @@ def _get_cached(key: str) -> str:
         existing = _cache.get(key)
         if existing and time.monotonic() - existing[0] < _CACHE_TTL_SECONDS:
             return existing[1]
-        _cache[key] = (now, value)
+        # 用写入时刻 (而非 DB 读前时刻) 作为缓存时间戳, 防 TTL 被 DB 读耗时偷掉
+        _cache[key] = (time.monotonic(), value)
     return value
 
 

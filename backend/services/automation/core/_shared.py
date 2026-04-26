@@ -16,9 +16,9 @@ def is_debug_mode() -> bool:
 
 def get_profile_id_from_page(page) -> int:
     """从 page 对象反查 profile_id（用于 sync 函数内提取 cookies）。"""
-    for pid, inst in browser_manager._instances.items():
-        if inst.page is page:
-            return pid
+    pid = browser_manager.find_profile_id_by_page(page)
+    if pid is not None:
+        return pid
     ids = browser_manager.get_running_ids()
     return ids[0] if ids else 0
 
