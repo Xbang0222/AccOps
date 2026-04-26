@@ -256,11 +256,11 @@ class BrowserManager:
 
     # ── 存储分析与清理 ────────────────────────────────────
 
-    # 这些 Chromium 子目录是缓存/模型数据，清掉不影响 cookies 和登录态
-    # 顶层缓存目录
-    CLEANABLE_SUBDIRS: List[str] = [
+    # 黑名单: 明确可安全删除的文件和目录，不影响浏览器启动和登录态
+    CLEANABLE_TOP_DIRS: List[str] = [
         "optimization_guide_model_store",
         "component_crx_cache",
+        "extensions_crx_cache",
         "WasmTtsEngine",
         "Safe Browsing",
         "GraphiteDawnCache",
@@ -281,11 +281,28 @@ class BrowserManager:
         "Subresource Filter",
         "ActorSafetyLists",
         "WidevineCdm",
+        "Crowd Deny",
+        "MEIPreload",
+        "FileTypePolicies",
+        "CaptchaProviders",
+        "AmountExtractionHeuristicRegexes",
+        "FirstPartySetsPreloaded",
+        "OnDeviceHeadSuggestModel",
+        "Variations",
+        "BrowserMetrics",
+        "GPUPersistentCache",
+        "NativeMessagingHosts",
     ]
-    # Default/ 下的缓存子目录（不含 Cookies、Local Storage 等登录态数据）
-    # 注意: DawnGraphiteCache/GrShaderCache/ShaderCache 与顶层同名但路径不同，
-    # Chromium 在顶层和 Default/ 下各维护一份，需分别清理
-    CLEANABLE_DEFAULT_SUBDIRS: List[str] = [
+    CLEANABLE_TOP_FILES: List[str] = [
+        "BrowserMetrics-spare.pma",
+        "first_party_sets.db",
+        "first_party_sets.db-journal",
+        "ChromeFeatureState",
+        "VariationsSeedV2",
+        "VariationsSafeSeedV2",
+        ".DS_Store",
+    ]
+    CLEANABLE_DEFAULT_DIRS: List[str] = [
         "Cache",
         "Code Cache",
         "Service Worker",
@@ -296,6 +313,62 @@ class BrowserManager:
         "ShaderCache",
         "blob_storage",
         "File System",
+        "Storage",
+        "Sessions",
+        "Web Applications",
+        "Shared Dictionary",
+        "shared_proto_db",
+        "AutofillAiModelCache",
+        "Segmentation Platform",
+        "PersistentOriginTrials",
+        "Feature Engagement Tracker",
+        "Download Service",
+        "Extensions",
+        "Extension State",
+        "Extension Rules",
+        "Extension Scripts",
+        "WebStorage",
+        "IndexedDB",
+        "Sync Data",
+        "Search Logos",
+        "GCM Store",
+        "Site Characteristics Database",
+        "Collaboration",
+        "DataSharing",
+        "Accounts",
+        "image_cache",
+        "optimization_guide_hint_cache_store",
+        "VideoDecodeStats",
+    ]
+    CLEANABLE_DEFAULT_FILES: List[str] = [
+        "History", "History-journal",
+        "Favicons", "Favicons-journal",
+        "Web Data", "Web Data-journal",
+        "Account Web Data", "Account Web Data-journal",
+        "Affiliation Database", "Affiliation Database-journal",
+        "Network Action Predictor", "Network Action Predictor-journal",
+        "Reporting and NEL", "Reporting and NEL-journal",
+        "Trust Tokens", "Trust Tokens-journal",
+        "DIPS",
+        "BrowsingTopicsSiteData", "BrowsingTopicsSiteData-journal",
+        "BrowsingTopicsState",
+        "Top Sites", "Top Sites-journal",
+        "Shortcuts", "Shortcuts-journal",
+        "ServerCertificate",
+        "Safe Browsing Cookies", "Safe Browsing Cookies-journal",
+        "heavy_ad_intervention_opt_out.db",
+        "MediaDeviceSalts",
+        "SharedStorage",
+        "BookmarkMergedSurfaceOrdering",
+        "ClientCertificates",
+        "commerce_subscription_db",
+        "discount_infos_db",
+        "discounts_db",
+        "chrome_cart_db",
+        "engine_allowlist.bf",
+        "parcel_tracking_db",
+        "BudgetDatabase",
+        ".DS_Store",
     ]
 
     @staticmethod
@@ -314,19 +387,30 @@ class BrowserManager:
         return total
 
     def _iter_cleanable_dirs(self, profile_dir: Path):
-        """枚举一个 profile 下所有可清理的缓存目录"""
-        # 顶层缓存目录
-        for name in self.CLEANABLE_SUBDIRS:
-            subdir = profile_dir / name
-            if subdir.exists():
-                yield subdir
-        # Default/ 下的缓存子目录
+        """枚举一个 profile 下所有可清理的目录"""
+        for name in self.CLEANABLE_TOP_DIRS:
+            d = profile_dir / name
+            if d.exists():
+                yield d
         default_dir = profile_dir / "Default"
         if default_dir.exists():
-            for name in self.CLEANABLE_DEFAULT_SUBDIRS:
-                subdir = default_dir / name
-                if subdir.exists():
-                    yield subdir
+            for name in self.CLEANABLE_DEFAULT_DIRS:
+                d = default_dir / name
+                if d.exists():
+                    yield d
+
+    def _iter_cleanable_files(self, profile_dir: Path):
+        """枚举一个 profile 下所有可清理的文件"""
+        for name in self.CLEANABLE_TOP_FILES:
+            f = profile_dir / name
+            if f.exists():
+                yield f
+        default_dir = profile_dir / "Default"
+        if default_dir.exists():
+            for name in self.CLEANABLE_DEFAULT_FILES:
+                f = default_dir / name
+                if f.exists():
+                    yield f
 
     def get_storage_stats(self) -> dict:
         """获取浏览器 profile 存储统计"""
@@ -354,8 +438,9 @@ class BrowserManager:
             size = self._dir_size_bytes(child)
             total_bytes += size
 
-            # 计算可清理缓存大小
+            # 计算可清理缓存大小（目录 + 文件）
             cache_size = sum(self._dir_size_bytes(d) for d in self._iter_cleanable_dirs(child))
+            cache_size += sum(f.stat().st_size for f in self._iter_cleanable_files(child))
             cleanable_bytes += cache_size
 
             pid = dir_to_pid.get(child.name)
@@ -413,6 +498,14 @@ class BrowserManager:
                     freed_bytes += size
                 except OSError as e:
                     logger.warning(f"清理 {subdir} 失败: {e}")
+
+            for f in self._iter_cleanable_files(child):
+                try:
+                    size = f.stat().st_size
+                    f.unlink()
+                    freed_bytes += size
+                except OSError as e:
+                    logger.warning(f"清理 {f} 失败: {e}")
 
             cleaned_count += 1
 

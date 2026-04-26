@@ -209,6 +209,7 @@ function StorageStatsCard() {
             okText="确认清理"
             cancelText="取消"
             okButtonProps={{ danger: true }}
+            placement="topRight"
           >
             <Button
               danger

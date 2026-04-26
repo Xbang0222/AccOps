@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { Button, Empty, Flex, Spin, Tag, Tooltip, Typography } from 'antd'
+import { Button, Checkbox, Empty, Flex, Spin, Tag, Tooltip, Typography } from 'antd'
 import { ArrowLeftOutlined, CloudUploadOutlined, EyeInvisibleOutlined, EyeOutlined, LoginOutlined, PoweroffOutlined, SafetyCertificateOutlined, TeamOutlined, UsergroupAddOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -15,6 +15,11 @@ const GroupDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const groupId = Number(groupIdParam)
   const controller = useGroupDetailController(groupId)
+
+  const uploadableCount = useMemo(
+    () => (controller.group?.accounts ?? []).filter((a) => a.has_oauth_credential).length,
+    [controller.group?.accounts],
+  )
 
   const modalCapacity = useMemo(
     () => ({
@@ -94,17 +99,19 @@ const GroupDetailPage: React.FC = () => {
         >
           一键验证
         </Button>
-        <Button
-          size="small"
-          type="primary"
-          ghost
-          icon={<CloudUploadOutlined />}
-          disabled={controller.selectedForUpload.size === 0 || controller.batchRunning !== null}
-          loading={controller.uploadingToCliproxy}
-          onClick={() => void controller.handleUploadToCliproxy()}
-        >
-          上传到 CLIProxy ({controller.selectedForUpload.size})
-        </Button>
+        {controller.selectedForUpload.size > 0 ? (
+          <Button
+            size="small"
+            type="primary"
+            ghost
+            icon={<CloudUploadOutlined />}
+            disabled={controller.batchRunning !== null}
+            loading={controller.uploadingToCliproxy}
+            onClick={() => void controller.handleUploadToCliproxy()}
+          >
+            上传 ({controller.selectedForUpload.size})
+          </Button>
+        ) : null}
         <Button
           size="small"
           icon={<PoweroffOutlined />}
@@ -125,6 +132,26 @@ const GroupDetailPage: React.FC = () => {
 
       <div style={{ flex: 1, display: 'flex', gap: 12, minHeight: 0 }}>
         <div style={{ width: 380, flexShrink: 0, overflowY: 'auto' }}>
+          {uploadableCount > 0 ? (
+            <Flex align="center" gap={6} style={{ padding: '4px 10px', marginBottom: 4 }}>
+              <Checkbox
+                checked={controller.selectedForUpload.size > 0 && controller.selectedForUpload.size >= uploadableCount}
+                indeterminate={controller.selectedForUpload.size > 0 && controller.selectedForUpload.size < uploadableCount}
+                onChange={() => {
+                  if (controller.selectedForUpload.size >= uploadableCount) {
+                    controller.handleClearUploadSelection()
+                  } else {
+                    controller.handleSelectAllUploadable()
+                  }
+                }}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {controller.selectedForUpload.size > 0
+                  ? `已选 ${controller.selectedForUpload.size}/${uploadableCount}`
+                  : `全选 (${uploadableCount})`}
+              </Text>
+            </Flex>
+          ) : null}
           <Spin spinning={controller.loading}>
             {controller.sortedAccounts.length > 0 ? (
               controller.sortedAccounts.map((account) => (
