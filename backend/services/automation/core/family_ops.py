@@ -86,10 +86,20 @@ def accept_family_invite_sync(page, on_step=None, cancel_token=None) -> Automati
         return tracker.result(False, f"异常: {e}", step="error")
 
 
+def _check_cancelled(tracker: StepTracker, cancel_token) -> AutomationResult | None:
+    """若已被取消, 返回带 cancelled 标记的失败结果, 否则返回 None。"""
+    if cancel_token is not None and cancel_token.is_cancelled:
+        return tracker.result(False, "操作已被取消", step="cancelled")
+    return None
+
+
 def remove_family_member_sync(page, member_email: str, password: str = "",
-                              totp_secret: str = "", on_step=None) -> AutomationResult:
+                              totp_secret: str = "", on_step=None,
+                              cancel_token=None) -> AutomationResult:
     """移除家庭组成员 (已接受成员需要 rapt, 未接受成员撤销邀请)"""
     tracker = StepTracker("remove_member", on_step)
+    if cancelled := _check_cancelled(tracker, cancel_token):
+        return cancelled
 
     tracker.step("提取 cookies", "info")
     cookies = browser_manager.get_cookies(get_profile_id_from_page(page))
@@ -111,6 +121,8 @@ def remove_family_member_sync(page, member_email: str, password: str = "",
                 return tracker.result(False, f"未找到成员: {member_email}", step="find_member")
 
             tracker.step("找到成员", "ok", f"{target['name']} ({target['user_id']})")
+            if cancelled := _check_cancelled(tracker, cancel_token):
+                return cancelled
 
             if target.get("pending"):
                 invitation_id = target.get("invitation_id")
@@ -131,6 +143,8 @@ def remove_family_member_sync(page, member_email: str, password: str = "",
             if not rapt:
                 return tracker.result(False, "获取 rapt token 失败", step="rapt")
             tracker.step("rapt 获取成功", "ok")
+            if cancelled := _check_cancelled(tracker, cancel_token):
+                return cancelled
 
             cookies = browser_manager.get_cookies(get_profile_id_from_page(page))
             api.client.cookies.update(cookies)
@@ -150,9 +164,11 @@ def remove_family_member_sync(page, member_email: str, password: str = "",
 
 
 def leave_family_group_sync(page, password: str = "", totp_secret: str = "",
-                            on_step=None) -> AutomationResult:
+                            on_step=None, cancel_token=None) -> AutomationResult:
     """退出/删除家庭组 (需要 rapt)"""
     tracker = StepTracker("leave_family", on_step)
+    if cancelled := _check_cancelled(tracker, cancel_token):
+        return cancelled
 
     tracker.step("提取 cookies", "info")
     cookies = browser_manager.get_cookies(get_profile_id_from_page(page))
@@ -167,12 +183,16 @@ def leave_family_group_sync(page, password: str = "", totp_secret: str = "",
             is_admin = members_info["is_admin"]
             action = "删除家庭组" if is_admin else "退出家庭组"
             target_path = "/family/delete" if is_admin else "/family/leave"
+            if cancelled := _check_cancelled(tracker, cancel_token):
+                return cancelled
 
             tracker.step("密码重验证", "info", f"{action} - 获取 rapt")
             rapt = get_rapt_sync(page, target_path, password, totp_secret)
             if not rapt:
                 return tracker.result(False, "获取 rapt token 失败", step="rapt")
             tracker.step("rapt 获取成功", "ok")
+            if cancelled := _check_cancelled(tracker, cancel_token):
+                return cancelled
 
             cookies = browser_manager.get_cookies(get_profile_id_from_page(page))
             api.client.cookies.update(cookies)

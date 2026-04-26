@@ -33,10 +33,9 @@ backend/
 │   ├── dashboard.py            # 仪表盘 API (统计数据)
 │   ├── browser.py              # 浏览器配置 API (启动/停止/状态)
 │   ├── automation.py           # 自动化 REST API (登录/家庭组操作)
-│   ├── automation_ws.py        # 自动化 WebSocket (实时步骤推送)
-│   ├── automation_swap.py      # 统一换号操作 (移除→选号→邀请→接受→同步)
-│   ├── automation_helpers.py   # WebSocket 基础设施 (步骤队列/任务轮询)
-│   ├── settings.py             # 系统设置 API (GET/PUT, 存 config 表)
+│   ├── automation_ws.py        # 自动化 WebSocket (实时步骤推送 + ACTION 分发)
+│   ├── automation_helpers.py   # 向后兼容 re-export, 实际实现在 services/automation/ws_helpers.py
+│   ├── settings.py             # 系统设置 API (GET/PUT, 存 config 表, 走 runtime_config)
 │   ├── sms.py                  # 接码管理 API (提供商 CRUD + 购买/查询/取消)
 │   └── cliproxy.py             # CLIProxyAPI 集成 API (上传 OAuth 凭证 + 连接测试)
 ├── core/
@@ -48,9 +47,19 @@ backend/
 │   ├── age_verification.py     # 年龄验证服务
 │   ├── auth.py                 # 认证服务 (密码设置/验证)
 │   ├── auth_steps.py           # 登录步骤处理
-│   ├── automation.py           # 自动化核心逻辑 (StepTracker + 所有自动化函数)
-│   ├── automation_types.py     # 自动化类型定义
-│   ├── automation_utils.py     # 自动化共享工具 (cookies保存/订阅同步/解密)
+│   ├── automation/             # 自动化包 (D3 拆包后, 替代旧 automation.py/_types/_utils)
+│   │   ├── __init__.py         #   公共 API 重导出 (run_*, types, discover_family_by_cookies)
+│   │   ├── types.py            #   AutomationResult / FamilyDiscoverResult / StepTracker / CancellationToken / ErrorCode
+│   │   ├── runners.py          #   8 个 run_* 异步包装器 (executor)
+│   │   ├── persistence.py      #   cookies / OAuth / 订阅状态落库
+│   │   ├── ws_helpers.py       #   WebSocket 基础设施 (步骤队列 / 任务轮询 / 取消信号)
+│   │   ├── core/
+│   │   │   ├── _shared.py      #   debug 模式判断 / 页面查 profile_id / build_member_list
+│   │   │   ├── login.py        #   auto_login_sync + auto_login_and_get_cookies
+│   │   │   ├── family_ops.py   #   create / send / accept / remove / leave _sync (RPC)
+│   │   │   └── discover.py     #   discover_*_sync + discover_family_by_cookies (4 级回退)
+│   │   └── orchestrator/
+│   │       └── swap.py         #   换号编排 (515 行, 从 routers/automation_swap.py 搬迁)
 │   ├── browser.py              # DrissionPage 浏览器管理 (登录 + rapt 获取)
 │   ├── family_api.py           # Google Family batchexecute RPC 封装 (纯 httpx)
 │   ├── group.py                # 家庭组 CRUD + 成员管理服务
@@ -58,6 +67,7 @@ backend/
 │   ├── oauth.py                # OAuth 自动授权 + API 探测 + 自动手机号验证
 │   ├── oauth_support.py        # OAuth 辅助工具
 │   ├── page_wait.py            # DrissionPage 页面等待与重试工具 (防 "page is refreshed" 异常)
+│   ├── runtime_config.py       # 运行时配置统一抽象 (KEYS dict + 30s TTL 缓存, 切断 services→routers 反向依赖)
 │   ├── sms_api.py              # 接码平台 API 封装 (HeroSMS / SMS-Bus 多提供商)
 │   ├── tag.py                  # 用户自定义标签 CRUD (含关联账号计数)
 │   ├── cliproxy.py             # CLIProxyAPI 凭证上传服务 (httpx 异步并发)
@@ -110,12 +120,18 @@ frontend/src/
 │   ├── http.ts                  # HTTP 错误消息提取
 │   ├── mask.ts                  # 邮箱脱敏工具
 │   └── totp.ts                  # TOTP 验证码生成
-└── hooks/
-    ├── useAutomationWs.ts       # 自动化 WebSocket hook
-    └── useThemeMode.tsx         # 主题模式 Context (system/light/dark)
+├── hooks/
+│   ├── useAutomationWs.ts       # 自动化 WebSocket hook
+│   └── useThemeMode.ts          # 主题模式 hook (D1 拆分: hook only)
+└── contexts/
+    ├── themeContext.ts          # ThemeMode Context 定义 (常量, 无组件)
+    ├── ThemeProvider.tsx        # ThemeMode Provider 组件 (D1 拆分: 解决 Fast Refresh 违规)
+    └── AutomationProvider.tsx   # 自动化 WebSocket Provider
 ```
 
-> 自动化模块拆分为 4 个文件: `automation.py` (REST) / `automation_ws.py` (WebSocket) / `automation_swap.py` (换号) / `automation_helpers.py` (WS工具)。共享工具函数位于 `services/automation_utils.py`。
+> **后端自动化结构**: REST 入口 `routers/automation.py` + WS 入口 `routers/automation_ws.py` 都从 `services/automation/` 包获取业务函数。换号编排已搬迁到 `services/automation/orchestrator/swap.py`, 不再有 `routers/automation_swap.py`。WS 工具函数下沉到 `services/automation/ws_helpers.py`, `routers/automation_helpers.py` 仅作向后兼容 re-export。
+>
+> **配置统一**: 所有跨层配置读取走 `services/runtime_config.py` (30s TTL 缓存); `services/` 不再反向 import `routers/`。
 
 ## 环境变量
 
@@ -182,7 +198,7 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 每个函数都有对应的异步包装器 `run_xxx()` 用于 API 调用。
 
-### 统一换号操作 (routers/automation_swap.py)
+### 统一换号操作 (services/automation/orchestrator/swap.py)
 
 将原有的替换/轮换/一键换号合并为单一 `family-swap` 操作:
 

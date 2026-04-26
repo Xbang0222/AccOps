@@ -63,8 +63,18 @@ def _get_cached(key: str) -> str:
         cached = _cache.get(key)
         if cached and now - cached[0] < _CACHE_TTL_SECONDS:
             return cached[1]
+
+    # 锁外读 DB, 避免长时间持锁阻塞其他线程的命中读取。
+    # 注: 缓存失效瞬间可能有多个线程同时穿透 (thundering herd),
+    # 配置读取频率不高 + DB 查询轻量, 当前可接受;
+    # 如未来频繁场景下成为瓶颈, 可改成 per-key lock 收敛并发回源。
     value = _read_from_db(key)
+
     with _cache_lock:
+        # 双重检查: 期间可能有 set_value 或更早的回源已写入更新的值
+        existing = _cache.get(key)
+        if existing and time.monotonic() - existing[0] < _CACHE_TTL_SECONDS:
+            return existing[1]
         _cache[key] = (now, value)
     return value
 
@@ -80,7 +90,11 @@ def get_bool(key: str) -> bool:
 
 
 def set_value(key: str, value: str) -> None:
-    """写入配置值并立即失效缓存。"""
+    """写入配置值, 然后用新值同步刷新缓存条目。
+
+    实现上是 prime cache (写入 DB 后立即 put 新值) 而非 invalidate, 避免后续读穿透 DB。
+    若需严格"失效"语义, 改调用 invalidate(key) + 自然过期。
+    """
     from models.database import get_db_session
     from models.orm import Config
 

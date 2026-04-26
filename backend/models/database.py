@@ -17,7 +17,8 @@ engine = create_engine(
     pool_size=10,
     max_overflow=10,
     pool_timeout=30,
-    connect_args={"options": "-c statement_timeout=30000"},
+    # 不设全局 statement_timeout: 长跑任务 (cookies discover / RPC) 会被误杀。
+    # 如需对单条危险查询限流, 在具体路由内 SET LOCAL statement_timeout。
 )
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 

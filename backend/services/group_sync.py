@@ -179,7 +179,7 @@ def _sync_removed_member(db: Session, extra: dict) -> None:
     if not member_email:
         return
 
-    member = db.query(Account).filter(Account.email == member_email).first()
+    member = db.query(Account).filter(func.lower(Account.email) == member_email.lower()).first()
     if not member or not member.family_group_id:
         return
 

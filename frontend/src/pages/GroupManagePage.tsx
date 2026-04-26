@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   App,
   Card,
@@ -61,20 +61,7 @@ const GroupManagePage: React.FC = () => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadIdRef = useRef(0);
 
-  useEffect(() => {
-    void loadGroups();
-    void loadAccounts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleSearchChange = (value: string) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      void loadGroups(value);
-    }, 300);
-  };
-
-  const loadGroups = async (search?: string) => {
+  const loadGroups = useCallback(async (search?: string) => {
     const id = ++loadIdRef.current;
     setLoading(true);
     try {
@@ -85,15 +72,27 @@ const GroupManagePage: React.FC = () => {
     } finally {
       if (loadIdRef.current === id) setLoading(false);
     }
-  };
+  }, [message]);
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     try {
       const { data } = await getAccounts({ page: 1, pageSize: 999 });
       setAccounts(data.accounts);
     } catch {
       message.error('加载账号失败');
     }
+  }, [message]);
+
+  useEffect(() => {
+    void loadGroups();
+    void loadAccounts();
+  }, [loadGroups, loadAccounts]);
+
+  const handleSearchChange = (value: string) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      void loadGroups(value);
+    }, 300);
   };
 
   const handleAdd = () => {

@@ -20,12 +20,6 @@ from core.constants import (
 )
 from models.database import get_db_session
 from models.orm import Account, BrowserProfile
-from routers.automation_helpers import (
-    _create_step_handler,
-    _drain_task_queue,
-    _flush_step_messages,
-    _get_task_result,
-)
 from services.automation.core.discover import discover_family_by_cookies
 from services.automation.persistence import (
     decrypt_field,
@@ -38,6 +32,12 @@ from services.automation.runners import (
     run_send_family_invite,
 )
 from services.automation.types import CancellationToken
+from services.automation.ws_helpers import (
+    _create_step_handler,
+    _drain_task_queue,
+    _flush_step_messages,
+    _get_task_result,
+)
 from services.browser import browser_manager
 from services.group_sync import sync_group_after_action, sync_group_from_discover
 

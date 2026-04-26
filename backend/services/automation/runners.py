@@ -80,6 +80,7 @@ async def run_remove_family_member(profile_id: int, member_email: str,
         return err
     return await _run_sync(
         remove_family_member_sync, page, member_email, password, totp_secret, on_step,
+        cancel_token=cancel_token,
     )
 
 
@@ -89,7 +90,10 @@ async def run_leave_family_group(profile_id: int, password: str = "",
     page, err = _get_page_or_fail(profile_id)
     if err:
         return err
-    return await _run_sync(leave_family_group_sync, page, password, totp_secret, on_step)
+    return await _run_sync(
+        leave_family_group_sync, page, password, totp_secret, on_step,
+        cancel_token=cancel_token,
+    )
 
 
 async def run_oauth(profile_id: int, on_step=None, password: str = "", totp_secret: str = "",

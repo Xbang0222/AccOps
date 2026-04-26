@@ -38,7 +38,30 @@ TIMESTAMP_COLUMNS: list[tuple[str, str]] = [
 ]
 
 
+def _check_email_case_uniqueness() -> None:
+    """创建 lower(email) 唯一索引前的前置检查。
+
+    若库中存在大小写差异的重复邮箱（如 Foo@x.com / foo@x.com 共存），
+    `CREATE UNIQUE INDEX` 会直接报错回滚整个迁移。这里提前检查并 raise，
+    给运维明确的错误信息以便人工 dedupe 后再升级。
+    """
+    # alembic 1.9+ 推荐 op.get_context().bind 替代 op.get_bind()
+    bind = op.get_context().bind
+    rows = bind.execute(sa.text(
+        "SELECT lower(email) AS lemail, count(*) AS cnt "
+        "FROM accounts GROUP BY lower(email) HAVING count(*) > 1"
+    )).fetchall()
+    if rows:
+        dupes = ", ".join(f"{r.lemail} ({r.cnt} 行)" for r in rows)
+        raise RuntimeError(
+            "邮箱大小写重复, 无法创建 lower(email) 唯一索引: "
+            f"{dupes}. 请先手工合并/删除冲突账号后重新执行 alembic upgrade。"
+        )
+
+
 def upgrade() -> None:
+    _check_email_case_uniqueness()
+
     op.create_index(
         "ix_accounts_email_lower",
         "accounts",
@@ -47,21 +70,28 @@ def upgrade() -> None:
     )
     op.create_index("ix_accounts_family_group_id", "accounts", ["family_group_id"])
     op.create_index("ix_sms_activations_provider_id", "sms_activations", ["provider_id"])
-    op.create_index("ix_accounts_status", "accounts", ["status"])
+    # status partial index: 绝大多数行 status='', 只索引非空状态以提升选择性
+    op.create_index(
+        "ix_accounts_status",
+        "accounts",
+        ["status"],
+        postgresql_where=sa.text("status != ''"),
+    )
 
+    # table/col 均为本文件硬编码常量, 无 SQL 注入风险; 用 sa.text 显式声明语法树位置
     for table, col in TIMESTAMP_COLUMNS:
-        op.execute(
-            f'ALTER TABLE {table} ALTER COLUMN {col} '
+        op.execute(sa.text(
+            f"ALTER TABLE {table} ALTER COLUMN {col} "
             f"TYPE TIMESTAMPTZ USING {col} AT TIME ZONE 'UTC'"
-        )
+        ))
 
 
 def downgrade() -> None:
     for table, col in TIMESTAMP_COLUMNS:
-        op.execute(
-            f'ALTER TABLE {table} ALTER COLUMN {col} '
+        op.execute(sa.text(
+            f"ALTER TABLE {table} ALTER COLUMN {col} "
             f"TYPE TIMESTAMP USING {col} AT TIME ZONE 'UTC'"
-        )
+        ))
     op.drop_index("ix_accounts_status", table_name="accounts")
     op.drop_index("ix_sms_activations_provider_id", table_name="sms_activations")
     op.drop_index("ix_accounts_family_group_id", table_name="accounts")

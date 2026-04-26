@@ -24,6 +24,8 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.alter_column('accounts', 'pool_status', new_column_name='status')
+    # PostgreSQL 不允许直接 drop 带 FK 约束的列, 必须先 drop_constraint
+    op.drop_constraint('accounts_pool_group_id_fkey', 'accounts', type_='foreignkey')
     op.drop_column('accounts', 'pool_group_id')
     op.drop_column('accounts', 'pool_use_count')
     op.drop_column('accounts', 'pool_last_used_at')
@@ -31,14 +33,16 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.alter_column('accounts', 'status', new_column_name='pool_status')
+    # 先加列(不带 FK), 再显式 create_foreign_key, 这样 constraint 名字能保持 'accounts_pool_group_id_fkey'
     op.add_column(
         'accounts',
-        sa.Column(
-            'pool_group_id',
-            sa.Integer(),
-            sa.ForeignKey('family_groups.id', ondelete='SET NULL'),
-            nullable=True,
-        ),
+        sa.Column('pool_group_id', sa.Integer(), nullable=True),
+    )
+    op.create_foreign_key(
+        'accounts_pool_group_id_fkey',
+        'accounts', 'family_groups',
+        ['pool_group_id'], ['id'],
+        ondelete='SET NULL',
     )
     op.add_column(
         'accounts',

@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -62,6 +63,12 @@ class Group(Base):
 
 class Account(Base):
     __tablename__ = "accounts"
+    # 与 alembic 迁移 640a8aedf3cf 同步声明, 否则 alembic check 会把 DB 中已有索引识别为待删除
+    __table_args__ = (
+        Index("ix_accounts_email_lower", text("lower(email)"), unique=True),
+        Index("ix_accounts_family_group_id", "family_group_id"),
+        Index("ix_accounts_status", "status", postgresql_where=text("status != ''")),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String, nullable=False)
@@ -149,6 +156,9 @@ class SmsProvider(Base):
 class SmsActivation(Base):
     """接码记录"""
     __tablename__ = "sms_activations"
+    __table_args__ = (
+        Index("ix_sms_activations_provider_id", "provider_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     activation_id = Column(String, nullable=False, index=True)  # HeroSMS 返回的激活 ID
