@@ -58,5 +58,5 @@ async def upload(req: UploadRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/status")
-async def status(db: Session = Depends(get_db)):
-    return await svc.check_status(db)
+async def status():
+    return await svc.check_status()

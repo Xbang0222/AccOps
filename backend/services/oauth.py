@@ -92,13 +92,8 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
 
     try:
         # Step 0: 年龄认证检测 (可通过设置关闭)
-        from models.database import SessionLocal
-        from routers.settings import get_age_verify_enabled
-        _db = SessionLocal()
-        try:
-            age_verify_enabled = get_age_verify_enabled(_db)
-        finally:
-            _db.close()
+        from services.runtime_config import get_bool
+        age_verify_enabled = get_bool("age_verify_enabled")
 
         if not age_verify_enabled:
             tracker.step("年龄认证", "skip", "已在设置中关闭")

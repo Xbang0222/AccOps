@@ -6,10 +6,9 @@ import json
 from dataclasses import dataclass
 
 import httpx
-from sqlalchemy.orm import Session
 
 from models.orm import Account
-from routers.settings import _get
+from services.runtime_config import get_str
 
 
 @dataclass(frozen=True)
@@ -20,9 +19,9 @@ class UploadResult:
     message: str
 
 
-def _load_config(db: Session) -> tuple[str, str]:
-    base_url = _get(db, "cliproxy_base_url").strip().rstrip("/")
-    api_key = _get(db, "cliproxy_api_key").strip()
+def _load_config() -> tuple[str, str]:
+    base_url = get_str("cliproxy_base_url").strip().rstrip("/")
+    api_key = get_str("cliproxy_api_key").strip()
     return base_url, api_key
 
 
@@ -71,9 +70,9 @@ async def _upload_one(
 
 
 async def upload_accounts(
-    db: Session, account_ids: list[int]
+    db, account_ids: list[int]
 ) -> list[UploadResult]:
-    base_url, api_key = _load_config(db)
+    base_url, api_key = _load_config()
     if not base_url or not api_key:
         raise ValueError(
             "CLIProxyAPI 未配置: 请先在系统设置中填写 Base URL 和 API Key"
@@ -89,8 +88,8 @@ async def upload_accounts(
         )
 
 
-async def check_status(db: Session) -> dict:
-    base_url, api_key = _load_config(db)
+async def check_status() -> dict:
+    base_url, api_key = _load_config()
     if not base_url or not api_key:
         return {"configured": False, "reachable": False, "message": "未配置"}
     try:

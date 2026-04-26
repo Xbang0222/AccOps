@@ -4,20 +4,14 @@ from __future__ import annotations
 import logging
 
 from services.browser import browser_manager
+from services.runtime_config import get_bool
 
 logger = logging.getLogger(__name__)
 
 
 def is_debug_mode() -> bool:
-    """读取 config 表的 debug_mode 设置（D4 阶段会迁移到 runtime_config）。"""
-    try:
-        from models.database import get_db_session
-        from models.orm import Config
-        with get_db_session() as db:
-            row = db.query(Config).filter(Config.key == "debug_mode").first()
-            return row.value == "true" if row else False
-    except Exception:
-        return False
+    """读取 config 表的 debug_mode 设置。"""
+    return get_bool("debug_mode")
 
 
 def get_profile_id_from_page(page) -> int:

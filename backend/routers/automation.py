@@ -221,7 +221,7 @@ async def discover_family(req: AccountActionRequest, db: Session = Depends(get_d
     totp_secret = decrypt_field(account.totp_secret) or ""
     recovery_email = decrypt_field(account.recovery_email) or ""
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
         None,
         discover_family_by_cookies,

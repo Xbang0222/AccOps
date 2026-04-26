@@ -304,7 +304,7 @@ async def automation_websocket(ws: WebSocket):
                     acc_d = db_d.query(Account).filter(Account.id == account_id).first()
                     saved_cookies = acc_d.cookies_json if acc_d else ""
 
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 dr = await loop.run_in_executor(
                     None,
                     discover_family_by_cookies,

@@ -1,12 +1,10 @@
-"""系统设置路由"""
+"""系统设置路由 — 通过 services.runtime_config 单一数据源读写。"""
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from deps import verify_token
-from models.database import get_db
-from models.orm import Config
+from services import runtime_config
 
 router = APIRouter(
     prefix="/settings",
@@ -14,53 +12,6 @@ router = APIRouter(
     dependencies=[Depends(verify_token)],
 )
 
-# ---- 默认值 ----
-
-DEFAULTS = {
-    "debug_mode": "false",
-    "headless_mode": "false",
-    "default_sms_provider_id": "",
-    "age_verify_enabled": "false",
-    "card_number": "",
-    "card_expiry": "",
-    "card_cvv": "",
-    "card_zip": "",
-    "cliproxy_base_url": "",
-    "cliproxy_api_key": "",
-}
-
-
-# ---- 工具函数 ----
-
-def _get(db: Session, key: str) -> str:
-    """获取设置值, 不存在则返回默认值"""
-    row = db.query(Config).filter(Config.key == key).first()
-    if row:
-        return row.value
-    return DEFAULTS.get(key, "")
-
-
-def _set(db: Session, key: str, value: str):
-    """写入设置值"""
-    row = db.query(Config).filter(Config.key == key).first()
-    if row:
-        row.value = value
-    else:
-        db.add(Config(key=key, value=value))
-    db.commit()
-
-
-def get_debug_mode(db: Session) -> bool:
-    """获取调试模式状态 (供其他模块调用)"""
-    return _get(db, "debug_mode") == "true"
-
-
-def get_age_verify_enabled(db: Session) -> bool:
-    """获取年龄认证开关状态 (供其他模块调用)"""
-    return _get(db, "age_verify_enabled") == "true"
-
-
-# ---- 请求/响应模型 ----
 
 class SettingsResponse(BaseModel):
     debug_mode: bool
@@ -88,52 +39,47 @@ class SettingsUpdateRequest(BaseModel):
     cliproxy_api_key: str | None = None
 
 
-def _build_response(db: Session) -> SettingsResponse:
-    """构建完整的设置响应"""
+_BOOL_KEYS = ("debug_mode", "headless_mode", "age_verify_enabled")
+_STR_KEYS = (
+    "default_sms_provider_id",
+    "card_number",
+    "card_expiry",
+    "card_cvv",
+    "card_zip",
+    "cliproxy_base_url",
+    "cliproxy_api_key",
+)
+
+
+def _build_response() -> SettingsResponse:
     return SettingsResponse(
-        debug_mode=_get(db, "debug_mode") == "true",
-        headless_mode=_get(db, "headless_mode") == "true",
-        default_sms_provider_id=_get(db, "default_sms_provider_id"),
-        age_verify_enabled=_get(db, "age_verify_enabled") == "true",
-        card_number=_get(db, "card_number"),
-        card_expiry=_get(db, "card_expiry"),
-        card_cvv=_get(db, "card_cvv"),
-        card_zip=_get(db, "card_zip"),
-        cliproxy_base_url=_get(db, "cliproxy_base_url"),
-        cliproxy_api_key=_get(db, "cliproxy_api_key"),
+        debug_mode=runtime_config.get_bool("debug_mode"),
+        headless_mode=runtime_config.get_bool("headless_mode"),
+        default_sms_provider_id=runtime_config.get_str("default_sms_provider_id"),
+        age_verify_enabled=runtime_config.get_bool("age_verify_enabled"),
+        card_number=runtime_config.get_str("card_number"),
+        card_expiry=runtime_config.get_str("card_expiry"),
+        card_cvv=runtime_config.get_str("card_cvv"),
+        card_zip=runtime_config.get_str("card_zip"),
+        cliproxy_base_url=runtime_config.get_str("cliproxy_base_url"),
+        cliproxy_api_key=runtime_config.get_str("cliproxy_api_key"),
     )
 
 
-# ---- 路由 ----
-
 @router.get("")
-def get_settings(db: Session = Depends(get_db)):
+def get_settings():
     """获取所有系统设置"""
-    return _build_response(db)
+    return _build_response()
 
 
 @router.put("")
-def update_settings(req: SettingsUpdateRequest, db: Session = Depends(get_db)):
+def update_settings(req: SettingsUpdateRequest):
     """更新系统设置"""
-    if req.debug_mode is not None:
-        _set(db, "debug_mode", "true" if req.debug_mode else "false")
-    if req.headless_mode is not None:
-        _set(db, "headless_mode", "true" if req.headless_mode else "false")
-    if req.default_sms_provider_id is not None:
-        _set(db, "default_sms_provider_id", req.default_sms_provider_id)
-    if req.age_verify_enabled is not None:
-        _set(db, "age_verify_enabled", "true" if req.age_verify_enabled else "false")
-    if req.card_number is not None:
-        _set(db, "card_number", req.card_number)
-    if req.card_expiry is not None:
-        _set(db, "card_expiry", req.card_expiry)
-    if req.card_cvv is not None:
-        _set(db, "card_cvv", req.card_cvv)
-    if req.card_zip is not None:
-        _set(db, "card_zip", req.card_zip)
-    if req.cliproxy_base_url is not None:
-        _set(db, "cliproxy_base_url", req.cliproxy_base_url)
-    if req.cliproxy_api_key is not None:
-        _set(db, "cliproxy_api_key", req.cliproxy_api_key)
-
-    return _build_response(db)
+    payload = req.model_dump(exclude_unset=True)
+    for key in _BOOL_KEYS:
+        if key in payload and payload[key] is not None:
+            runtime_config.set_value(key, "true" if payload[key] else "false")
+    for key in _STR_KEYS:
+        if key in payload and payload[key] is not None:
+            runtime_config.set_value(key, payload[key])
+    return _build_response()

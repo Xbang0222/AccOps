@@ -29,6 +29,7 @@ from services.automation.types import (
     AutomationResult,
     CancellationToken,
     CancelledError,
+    ErrorCode,
     FamilyDiscoverResult,
     StepTracker,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "AutomationResult",
     "CancellationToken",
     "CancelledError",
+    "ErrorCode",
     "FamilyDiscoverResult",
     "StepTracker",
     # discover

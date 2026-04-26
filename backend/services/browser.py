@@ -99,14 +99,8 @@ class BrowserManager:
 
     @staticmethod
     def _is_headless_mode() -> bool:
-        try:
-            from models.database import get_db_session
-            from models.orm import Config
-            with get_db_session() as db:
-                row = db.query(Config).filter(Config.key == "headless_mode").first()
-                return row.value == "true" if row else False
-        except Exception:
-            return False
+        from services.runtime_config import get_bool
+        return get_bool("headless_mode")
 
     async def launch(self, profile, *, headless: bool | None = None) -> BrowserInstance:
         """启动 DrissionPage 浏览器实例

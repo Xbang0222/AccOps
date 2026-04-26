@@ -7,8 +7,21 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
+
+
+class ErrorCode(StrEnum):
+    """自动化操作的标准错误码。前端可按 code 走 UI 分支，避免字符串匹配。"""
+    COOKIES_EXPIRED = "cookies_expired"
+    RAPT_FAILED = "rapt_failed"
+    BROWSER_NOT_RUNNING = "browser_not_running"
+    RPC_ERROR = "rpc_error"
+    SMS_TIMEOUT = "sms_timeout"
+    NO_INVITATION = "no_invitation"
+    NETWORK_ERROR = "network_error"
+    CANCELLED = "cancelled"
 
 
 class CancelledError(Exception):
@@ -64,6 +77,7 @@ class AutomationResult:
     steps: list = field(default_factory=list)
     duration_ms: int = 0
     extra: dict = field(default_factory=dict)
+    error_code: ErrorCode | None = None
 
     def to_dict(self):
         data = {
@@ -75,6 +89,8 @@ class AutomationResult:
         }
         if self.extra:
             data["extra"] = self.extra
+        if self.error_code is not None:
+            data["error_code"] = self.error_code.value
         return data
 
 
