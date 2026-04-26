@@ -1,5 +1,5 @@
 import React from 'react'
-import { Button, Card, Dropdown, Flex, Tag, Tooltip, Typography, theme as antTheme } from 'antd'
+import { Button, Card, Checkbox, Dropdown, Flex, Tag, Tooltip, Typography, theme as antTheme } from 'antd'
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -41,6 +41,7 @@ interface GroupAccountCardProps {
   isSelected: boolean
   isRunning: boolean
   isBrowserLoading: boolean
+  isCheckedForUpload: boolean
   onClearStatus: (accountId: number) => void
   onCopyOAuthJson: (accountId: number) => void
   onCopyText: (text: string, label: string) => void
@@ -53,6 +54,7 @@ interface GroupAccountCardProps {
   onRemoveFromGroup: (accountId: number) => void
   onSelect: (accountId: number) => void
   onToggleBrowser: (accountId: number, running: boolean) => void
+  onToggleUploadSelect: (accountId: number) => void
 }
 
 export function GroupAccountCard({
@@ -62,6 +64,7 @@ export function GroupAccountCard({
   isSelected,
   isRunning,
   isBrowserLoading,
+  isCheckedForUpload,
   onClearStatus,
   onCopyOAuthJson,
   onCopyText,
@@ -74,6 +77,7 @@ export function GroupAccountCard({
   onRemoveFromGroup,
   onSelect,
   onToggleBrowser,
+  onToggleUploadSelect,
 }: GroupAccountCardProps) {
   const { token } = antTheme.useToken()
   const opState = useAccountOpState(account.id)
@@ -110,6 +114,15 @@ export function GroupAccountCard({
       >
         <Flex justify="space-between" align="flex-start" style={{ marginBottom: 4 }}>
           <Flex align="center" gap={6} style={{ flex: 1, minWidth: 0 }}>
+            <Tooltip title={account.has_oauth_credential ? '' : '无 OAuth 凭证'}>
+              <Checkbox
+                checked={isCheckedForUpload}
+                disabled={!account.has_oauth_credential}
+                onChange={() => onToggleUploadSelect(account.id)}
+                onClick={(event) => event.stopPropagation()}
+                style={{ flexShrink: 0 }}
+              />
+            </Tooltip>
             <GoogleOutlined style={{ color: '#4285f4', fontSize: 14, flexShrink: 0 }} />
             <Tooltip title="点击复制邮箱">
               <Text

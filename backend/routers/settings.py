@@ -26,6 +26,8 @@ DEFAULTS = {
     "card_expiry": "",
     "card_cvv": "",
     "card_zip": "",
+    "cliproxy_base_url": "",
+    "cliproxy_api_key": "",
 }
 
 
@@ -70,6 +72,8 @@ class SettingsResponse(BaseModel):
     card_expiry: str
     card_cvv: str
     card_zip: str
+    cliproxy_base_url: str
+    cliproxy_api_key: str
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -81,6 +85,8 @@ class SettingsUpdateRequest(BaseModel):
     card_expiry: Optional[str] = None
     card_cvv: Optional[str] = None
     card_zip: Optional[str] = None
+    cliproxy_base_url: Optional[str] = None
+    cliproxy_api_key: Optional[str] = None
 
 
 def _build_response(db: Session) -> SettingsResponse:
@@ -94,6 +100,8 @@ def _build_response(db: Session) -> SettingsResponse:
         card_expiry=_get(db, "card_expiry"),
         card_cvv=_get(db, "card_cvv"),
         card_zip=_get(db, "card_zip"),
+        cliproxy_base_url=_get(db, "cliproxy_base_url"),
+        cliproxy_api_key=_get(db, "cliproxy_api_key"),
     )
 
 
@@ -124,5 +132,9 @@ def update_settings(req: SettingsUpdateRequest, db: Session = Depends(get_db)):
         _set(db, "card_cvv", req.card_cvv)
     if req.card_zip is not None:
         _set(db, "card_zip", req.card_zip)
+    if req.cliproxy_base_url is not None:
+        _set(db, "cliproxy_base_url", req.cliproxy_base_url)
+    if req.cliproxy_api_key is not None:
+        _set(db, "cliproxy_api_key", req.cliproxy_api_key)
 
     return _build_response(db)

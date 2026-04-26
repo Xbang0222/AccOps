@@ -8,4 +8,5 @@ export * from './automation';
 export * from './settings';
 export * from './sms';
 export * from './tags';
+export * from './cliproxy';
 export { default as client } from './client';

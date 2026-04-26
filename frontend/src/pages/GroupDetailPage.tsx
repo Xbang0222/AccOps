@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { Button, Empty, Flex, Spin, Tag, Tooltip, Typography } from 'antd'
-import { ArrowLeftOutlined, EyeInvisibleOutlined, EyeOutlined, LoginOutlined, PoweroffOutlined, SafetyCertificateOutlined, TeamOutlined, UsergroupAddOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, CloudUploadOutlined, EyeInvisibleOutlined, EyeOutlined, LoginOutlined, PoweroffOutlined, SafetyCertificateOutlined, TeamOutlined, UsergroupAddOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { GroupAccountCard } from '@/features/group-detail/components/GroupAccountCard'
@@ -96,6 +96,17 @@ const GroupDetailPage: React.FC = () => {
         </Button>
         <Button
           size="small"
+          type="primary"
+          ghost
+          icon={<CloudUploadOutlined />}
+          disabled={controller.selectedForUpload.size === 0 || controller.batchRunning !== null}
+          loading={controller.uploadingToCliproxy}
+          onClick={() => void controller.handleUploadToCliproxy()}
+        >
+          上传到 CLIProxy ({controller.selectedForUpload.size})
+        </Button>
+        <Button
+          size="small"
           icon={<PoweroffOutlined />}
           loading={controller.batchRunning === 'stop'}
           disabled={controller.batchRunning !== null && controller.batchRunning !== 'stop'}
@@ -125,6 +136,7 @@ const GroupDetailPage: React.FC = () => {
                   isSelected={controller.selectedAccountId === account.id}
                   isRunning={controller.browserRunning.has(account.id)}
                   isBrowserLoading={controller.browserLoading.has(account.id)}
+                  isCheckedForUpload={controller.selectedForUpload.has(account.id)}
                   onClearStatus={controller.handleClearStatus}
                   onCopyOAuthJson={controller.handleCopyOAuthJson}
                   onCopyText={controller.copyToClipboard}
@@ -137,6 +149,7 @@ const GroupDetailPage: React.FC = () => {
                   onRemoveFromGroup={controller.handleRemoveFromGroup}
                   onSelect={controller.setSelectedAccountId}
                   onToggleBrowser={controller.handleToggleBrowser}
+                  onToggleUploadSelect={controller.handleToggleUploadSelect}
                 />
               ))
             ) : (

@@ -10,6 +10,8 @@ export interface Settings {
   card_expiry: string;
   card_cvv: string;
   card_zip: string;
+  cliproxy_base_url: string;
+  cliproxy_api_key: string;
 }
 
 /** 获取系统设置 */

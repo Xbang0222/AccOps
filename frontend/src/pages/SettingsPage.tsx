@@ -23,8 +23,11 @@ import {
   SafetyCertificateOutlined,
   CreditCardOutlined,
   SaveOutlined,
+  CloudUploadOutlined,
+  ApiOutlined,
 } from '@ant-design/icons';
 import { getSettings, updateSettings, getSmsProviders, type Settings } from '@/api';
+import { getCliproxyStatus } from '@/api/cliproxy';
 import type { SmsProviderConfig } from '@/api/sms';
 import StorageStatsCard from '@/features/settings/StorageStatsCard';
 
@@ -36,6 +39,7 @@ function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState<SmsProviderConfig[]>([]);
+  const [cliproxyTesting, setCliproxyTesting] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -385,6 +389,97 @@ function SettingsPage() {
         </div>
       </Card>
       )}
+
+      {/* CLIProxyAPI 集成 */}
+      <Card
+        style={{ marginTop: 16 }}
+        title={
+          <Space>
+            <CloudUploadOutlined />
+            <span>CLIProxyAPI 集成</span>
+          </Space>
+        }
+      >
+        <div>
+          <Text strong style={{ fontSize: 15 }}>
+            远端代理配置
+          </Text>
+          <Paragraph
+            type="secondary"
+            style={{ marginBottom: 12, marginTop: 4 }}
+          >
+            配置 CLIProxyAPI 管理接口地址和密钥，用于从分组详情页一键上传 OAuth 凭证
+          </Paragraph>
+          <Flex gap={12} wrap>
+            <div style={{ flex: 2, minWidth: 240 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>Base URL</Text>
+              <Input
+                placeholder="https://your-domain.com"
+                value={settings?.cliproxy_base_url || ''}
+                onChange={(e) => setSettings((s) => s ? { ...s, cliproxy_base_url: e.target.value } : s)}
+                style={{ marginTop: 4 }}
+                prefix={<ApiOutlined style={{ color: '#bfbfbf' }} />}
+              />
+            </div>
+            <div style={{ flex: 2, minWidth: 240 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>API Key</Text>
+              <Input.Password
+                placeholder="management secret key"
+                value={settings?.cliproxy_api_key || ''}
+                onChange={(e) => setSettings((s) => s ? { ...s, cliproxy_api_key: e.target.value } : s)}
+                style={{ marginTop: 4 }}
+              />
+            </div>
+          </Flex>
+          <Flex gap={8} style={{ marginTop: 12 }} justify="flex-end">
+            <Button
+              size="small"
+              loading={cliproxyTesting}
+              onClick={async () => {
+                setCliproxyTesting(true);
+                try {
+                  const { data } = await getCliproxyStatus();
+                  if (data.reachable) {
+                    message.success('连接成功');
+                  } else {
+                    message.error(`连接失败: ${data.message}`);
+                  }
+                } catch {
+                  message.error('请求失败');
+                } finally {
+                  setCliproxyTesting(false);
+                }
+              }}
+            >
+              测试连接
+            </Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<SaveOutlined />}
+              loading={saving}
+              onClick={async () => {
+                if (!settings) return;
+                setSaving(true);
+                try {
+                  const { data } = await updateSettings({
+                    cliproxy_base_url: settings.cliproxy_base_url,
+                    cliproxy_api_key: settings.cliproxy_api_key,
+                  });
+                  setSettings(data);
+                  message.success('CLIProxyAPI 配置已保存');
+                } catch {
+                  message.error('保存失败');
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              保存
+            </Button>
+          </Flex>
+        </div>
+      </Card>
 
       {/* 存储清理 */}
       <StorageStatsCard />

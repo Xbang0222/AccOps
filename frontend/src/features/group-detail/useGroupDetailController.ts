@@ -1,5 +1,5 @@
-import { App } from 'antd'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { App, Modal } from 'antd'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   clearAccountStatus,
@@ -15,6 +15,7 @@ import {
   removeAccountFromGroup,
   stopBrowser,
 } from '@/api'
+import { uploadToCliproxy } from '@/api/cliproxy'
 import type { AutomationOperationDefinition } from '@/features/automation/operationMeta'
 import { createDefaultBrowserProfile } from '@/features/browser/browserProfileDefaults'
 import {
@@ -407,6 +408,9 @@ export function useGroupDetailController(groupId: number) {
 
   const [batchRunning, setBatchRunning] = useState<string | null>(null)
 
+  const [selectedForUpload, setSelectedForUpload] = useState<Set<number>>(new Set())
+  const [uploadingToCliproxy, setUploadingToCliproxy] = useState(false)
+
   const mainAccountId = group?.main_account_id ?? null
 
   const handleBatchLaunch = useCallback(async () => {
@@ -472,6 +476,72 @@ export function useGroupDetailController(groupId: number) {
     }
   }, [execute, mainAccountId, msg, sortedAccounts])
 
+  useEffect(() => {
+    if (!group?.accounts) return
+    const valid = new Set(group.accounts.map((a) => a.id))
+    setSelectedForUpload((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => valid.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [group?.accounts])
+
+  const handleToggleUploadSelect = useCallback((id: number) => {
+    setSelectedForUpload((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleSelectAllUploadable = useCallback(() => {
+    const ids = (group?.accounts ?? [])
+      .filter((a) => a.has_oauth_credential)
+      .map((a) => a.id)
+    setSelectedForUpload(new Set(ids))
+  }, [group?.accounts])
+
+  const handleClearUploadSelection = useCallback(() => {
+    setSelectedForUpload(new Set())
+  }, [])
+
+  const handleUploadToCliproxy = useCallback(async () => {
+    const ids = Array.from(selectedForUpload)
+    if (ids.length === 0) return
+    setUploadingToCliproxy(true)
+    try {
+      const { data } = await uploadToCliproxy(ids)
+      const lines = data.items.map(
+        (item) => `${item.success ? '✓' : '✗'} ${item.email} — ${item.message}`,
+      )
+      if (data.failed === 0) {
+        msg.success(`全部上传成功 (${data.succeeded}/${data.total})`)
+        setSelectedForUpload(new Set())
+      } else {
+        msg.warning(`${data.succeeded} 成功, ${data.failed} 失败`)
+      }
+      Modal.info({
+        title: `上传结果 (${data.succeeded}/${data.total})`,
+        width: 520,
+        content: React.createElement(
+          'div',
+          { style: { maxHeight: 300, overflowY: 'auto' } },
+          ...lines.map((line, i) =>
+            React.createElement('div', {
+              key: i,
+              style: { fontFamily: 'monospace', fontSize: 12, padding: '2px 0' },
+              children: line,
+            }),
+          ),
+        ),
+      })
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '上传失败'))
+    } finally {
+      setUploadingToCliproxy(false)
+    }
+  }, [msg, selectedForUpload])
+
   const handleSelectAllMembers = useCallback(() => {
     setSelectedEmails(swap.handleSelectAllMembers())
   }, [swap])
@@ -535,6 +605,7 @@ export function useGroupDetailController(groupId: number) {
     handleClearSelectedEmails,
     handleClearStatus,
     handleClearSwapManualEmails,
+    handleClearUploadSelection,
     handleCopyOAuthJson,
     handleDownloadOAuth,
     handleEmailSearch,
@@ -547,7 +618,10 @@ export function useGroupDetailController(groupId: number) {
     handleSelectAllInviteEmails,
     handleSelectAllMembers,
     handleSelectAllSwapManualEmails,
+    handleSelectAllUploadable,
     handleToggleBrowser,
+    handleToggleUploadSelect,
+    handleUploadToCliproxy,
     inviteCapacityLeft,
     swapNewCapacityLeft,
     loadGroup,
@@ -558,6 +632,7 @@ export function useGroupDetailController(groupId: number) {
     selectedAccount,
     selectedAccountId,
     selectedEmails,
+    selectedForUpload,
     selectedOpState,
     setActiveAccountId,
     setActiveOp,
@@ -568,6 +643,7 @@ export function useGroupDetailController(groupId: number) {
     setSwapManualEmails: swap.setSwapManualEmails,
     sortedAccounts,
     swapManualEmails: swap.swapManualEmails,
+    uploadingToCliproxy,
     copyToClipboard,
     copyTOTPCode,
   }
