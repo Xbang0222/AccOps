@@ -379,7 +379,7 @@ def _save_cookies_to_db(account_id: int, cookies: dict):
     """保存 cookies 到数据库"""
     import json as _json
     try:
-        from models.database import update_account_fields
+        from services.account import update_account_fields
         update_account_fields(account_id, cookies_json=_json.dumps(cookies))
         logger.info(f"[discover] cookies 已更新 → account #{account_id}")
     except Exception as e:

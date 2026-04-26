@@ -2,9 +2,24 @@
 import json
 from datetime import UTC, datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+from models.database import get_db_session
 from models.orm import Account, Tag, account_tags_table
+
+
+def update_account_fields(account_id: int, **fields) -> None:
+    """单账号字段更新工具（供后台任务/自动化使用）
+
+    会自动更新 updated_at 为当前 UTC 时间。
+    """
+    with get_db_session() as db:
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if account:
+            for key, value in fields.items():
+                setattr(account, key, value)
+            account.updated_at = datetime.now(UTC)
 
 
 class AccountService:
@@ -143,8 +158,8 @@ class AccountService:
         return self._to_dict(row) if row else None
 
     def find_by_email(self, email: str) -> dict | None:
-        """通过邮箱查找账号（不区分大小写）"""
-        row = self.db.query(Account).filter(Account.email.ilike(email)).first()
+        """通过邮箱查找账号（不区分大小写，走 lower(email) 函数唯一索引）"""
+        row = self.db.query(Account).filter(func.lower(Account.email) == email.lower()).first()
         return self._to_dict(row) if row else None
 
     def batch_update_tags(
@@ -161,7 +176,12 @@ class AccountService:
           - replace: 将 replace_from_id 标签替换为 tag_ids 中的标签
           - remove: 移除指定标签
         """
-        accounts = self.db.query(Account).filter(Account.id.in_(account_ids)).all()
+        accounts = (
+            self.db.query(Account)
+            .options(selectinload(Account.tags))
+            .filter(Account.id.in_(account_ids))
+            .all()
+        )
         if not accounts:
             return 0
         tags = self._resolve_tags(tag_ids)

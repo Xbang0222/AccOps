@@ -110,7 +110,7 @@ class GroupService:
             )
         return group_dict
 
-    def get_accounts(self, group_id: int) -> list[dict]:
+    def get_accounts(self, group_id: int, *, _group_cache: dict | None = None) -> list[dict]:
         """获取分组内所有账号"""
         rows = (
             self.db.query(Account)
@@ -118,7 +118,11 @@ class GroupService:
             .order_by(Account.email)
             .all()
         )
-        return [self.account_service._to_dict(row) for row in rows]
+        # 一次性查 group 缓存供 _to_dict 使用，消除 N+1
+        if _group_cache is None:
+            group_obj = self.db.get(Group, group_id)
+            _group_cache = {group_id: group_obj} if group_obj else {}
+        return [self.account_service._to_dict(row, _group_cache=_group_cache) for row in rows]
 
     def create(self, name: str, notes: str = "") -> int:
         group = Group(name=name, notes=notes)

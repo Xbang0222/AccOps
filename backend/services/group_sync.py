@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.constants import (
@@ -141,11 +142,15 @@ def _resolve_join_group_id(db: Session, extra: dict) -> int | None:
         if manager and manager.family_group_id:
             return manager.family_group_id
 
-    from sqlalchemy import func
-
-    groups = db.query(Group).filter(Group.main_account_id.isnot(None)).all()
-    for group in groups:
-        member_count = db.query(func.count(Account.id)).filter(Account.family_group_id == group.id).scalar()
+    # 单条聚合查询：拿到每个有主号的分组及其成员数，避免循环 COUNT (1+N → 1)
+    rows = (
+        db.query(Group, func.count(Account.id).label("member_count"))
+        .outerjoin(Account, Account.family_group_id == Group.id)
+        .filter(Group.main_account_id.isnot(None))
+        .group_by(Group.id)
+        .all()
+    )
+    for group, member_count in rows:
         if member_count < FAMILY_MAX_MEMBERS:
             logger.info("[sync_group] 兜底: 选择分组 #%s (%s)", group.id, group.name)
             return group.id
@@ -310,7 +315,7 @@ def _clear_pending_flag(db: Session, email: str) -> None:
     if not email:
         return
 
-    account = db.query(Account).filter(Account.email.ilike(email)).first()
+    account = db.query(Account).filter(func.lower(Account.email) == email.lower()).first()
     if account and account.is_family_pending:
         account.is_family_pending = False
         account.updated_at = datetime.now(UTC)
@@ -318,7 +323,7 @@ def _clear_pending_flag(db: Session, email: str) -> None:
 
 def _upsert_discovered_member(db: Session, group_id: int, email: str, is_pending: bool) -> None:
     now = datetime.now(UTC)
-    account = db.query(Account).filter(Account.email.ilike(email)).first()
+    account = db.query(Account).filter(func.lower(Account.email) == email.lower()).first()
     if not account:
         account = Account(email=email, family_group_id=group_id, is_family_pending=is_pending)
         db.add(account)

@@ -2,9 +2,9 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    TIMESTAMP,
     Boolean,
     Column,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -52,8 +52,8 @@ class Group(Base):
     main_account_id = Column(Integer, ForeignKey("accounts.id", use_alter=True), nullable=True)
     member_count = Column(Integer, default=0)  # 家庭组实际成员数 (含系统外成员)
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # 关系
     accounts = relationship("Account", back_populates="group", foreign_keys="Account.family_group_id")
@@ -74,11 +74,11 @@ class Account(Base):
     subscription_expiry = Column(String, default="")  # 订阅到期日, 如 "Mar 23, 2026"
     cookies_json = Column(Text, default="")  # 登录后保存的 cookies (JSON), 用于纯 HTTP 操作
     oauth_credential_json = Column(Text, default="")  # OAuth 认证 JSON (antigravity 格式)
-    retired_at = Column(DateTime, nullable=True)  # 从家庭组退出/移除的时间
+    retired_at = Column(TIMESTAMP(timezone=True), nullable=True)  # 从家庭组退出/移除的时间
     status = Column(String, default="")  # 账号状态: "" | "retired" | "unusable"
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # 关系
     group = relationship("Group", back_populates="accounts", foreign_keys=[family_group_id])
@@ -93,8 +93,8 @@ class Tag(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
     sort_order = Column(Integer, default=0, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     accounts = relationship("Account", secondary=account_tags_table, back_populates="tags")
 
@@ -123,8 +123,8 @@ class BrowserProfile(Base):
     webrtc_disabled = Column(Boolean, default=True)
 
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # 关系
     account = relationship("Account", back_populates="browser_profiles")
@@ -142,8 +142,8 @@ class SmsProvider(Base):
     default_service = Column(String, default="go")  # 该提供商的默认服务
     balance = Column(String, default="")  # 缓存余额
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
 
 class SmsActivation(Base):
@@ -165,5 +165,5 @@ class SmsActivation(Base):
     account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)  # 关联的账号
     account_email = Column(String, default="")  # 冗余存储邮箱, 方便查询
     notes = Column(Text, default="")  # 备注
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

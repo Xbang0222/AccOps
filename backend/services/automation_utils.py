@@ -3,8 +3,9 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from models.database import get_db_session, update_account_fields
+from models.database import get_db_session
 from models.orm import Account, Group
+from services.account import update_account_fields
 from services.automation import discover_family_by_cookies
 from services.browser import browser_manager
 
