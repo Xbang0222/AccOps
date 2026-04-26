@@ -23,6 +23,9 @@ import { maskEmail } from '@/utils/mask'
 
 const { Text } = Typography
 
+// AntD Table size='small' 的 rowSelection 复选框列实测渲染宽度（16px checkbox + 左右各 8px padding）
+export const SELECTION_COLUMN_WIDTH = 32
+
 interface CreateAccountTableColumnsOptions {
   browserLoading: Set<number>
   browserRunning: Set<number>

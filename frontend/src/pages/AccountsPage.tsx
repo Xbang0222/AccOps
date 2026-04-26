@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, type SyntheticEvent } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 import {
   Button,
   Input,
@@ -36,7 +36,7 @@ import {
   markAccountUnusable,
   clearAccountStatus,
 } from '@/api';
-import { createAccountTableColumns } from '@/features/accountsTableColumns';
+import { createAccountTableColumns, SELECTION_COLUMN_WIDTH } from '@/features/accountsTableColumns';
 import { createDefaultBrowserProfile } from '@/features/browser/browserProfileDefaults';
 import {
   buildBrowserRuntimeState,
@@ -53,6 +53,8 @@ import { downloadAccountsTxt } from '@/utils/exportAccount';
 import { useAutomation, useAutomationEvents } from '@/contexts/automationContext';
 
 const { Text } = Typography;
+
+const COLUMN_WIDTHS_STORAGE_KEY = 'accops:accounts-column-widths';
 
 const AccountsPage: React.FC = () => {
   const { message: msg } = App.useApp();
@@ -301,6 +303,14 @@ const AccountsPage: React.FC = () => {
   });
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null
+          && Object.values(parsed).every((v) => typeof v === 'number' && v > 0)) return parsed;
+      }
+    } catch { /* ignore */ }
     const widths: Record<string, number> = {};
     for (const col of baseColumns) {
       const key = (col as { key?: string }).key;
@@ -314,8 +324,17 @@ const AccountsPage: React.FC = () => {
 
   const handleColumnResize = (key: string) =>
     (_e: SyntheticEvent, { size }: ResizeCallbackData) => {
-      setColumnWidths((prev) => ({ ...prev, [key]: size.width }));
+      setColumnWidths((prev) => {
+        const next = { ...prev, [key]: size.width };
+        try { localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+        return next;
+      });
     };
+
+  const tableScrollX = useMemo(
+    () => Object.values(columnWidths).reduce((sum, w) => sum + w, 0) + SELECTION_COLUMN_WIDTH,
+    [columnWidths],
+  );
 
   const columns = baseColumns.map((col) => {
     const key = (col as { key?: string }).key;
@@ -398,15 +417,16 @@ const AccountsPage: React.FC = () => {
       </Flex>
 
       {/* 表格 */}
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <Table<Account>
+          className="accounts-table-excel"
           components={tableComponents}
           columns={columns}
           dataSource={accounts}
           rowKey="id"
           loading={loading}
           size="small"
-          scroll={{ x: 1280, y: 'calc(100vh - 260px)' }}
+          scroll={{ x: tableScrollX }}
           pagination={false}
           onChange={handleTableChange}
           rowSelection={{

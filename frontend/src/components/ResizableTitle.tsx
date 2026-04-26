@@ -4,10 +4,11 @@ import { Resizable, type ResizeCallbackData } from 'react-resizable'
 interface ResizableTitleProps {
   onResize: (e: SyntheticEvent, data: ResizeCallbackData) => void
   width: number
+  minWidth?: number
   [key: string]: unknown
 }
 
-function ResizableTitle({ onResize, width, ...restProps }: ResizableTitleProps) {
+function ResizableTitle({ onResize, width, minWidth = 60, ...restProps }: ResizableTitleProps) {
   if (!width) {
     return <th {...restProps} />
   }
@@ -16,6 +17,7 @@ function ResizableTitle({ onResize, width, ...restProps }: ResizableTitleProps) 
     <Resizable
       width={width}
       height={0}
+      minConstraints={[minWidth, 0]}
       handle={
         <span
           className="react-resizable-handle"

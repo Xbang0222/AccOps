@@ -125,3 +125,28 @@ code {
   height: 100%;
   background: #1677ff;
 }
+
+/* Excel 风格表格：rc-table 给内部 <table> 默认设置了 min-width: 100%，
+   会让 table 撑满容器宽度（即使 width=scroll.x 更小），从而把"剩余空间"
+   摊派给所有列，导致拖一列时其他列宽度变化。这里强制 min-width: 0
+   让 table 严格按 width(=scroll.x=各列宽之和) 渲染。 */
+.accounts-table-excel .ant-table table {
+  min-width: 0 !important;
+}
+
+/* 把 X 和 Y 滚动都让给外层 wrapper，避免 AntD fixHeader 模式
+   用 JS 同步独立 header table 与 body table 时的 1 帧延迟（横向滚动抽搐）。
+   配合外层 div overflow:auto 与下面 thead 的 position:sticky 使用。 */
+.accounts-table-excel .ant-table-container,
+.accounts-table-excel .ant-table-content {
+  overflow: visible !important;
+}
+
+/* thead 粘在外层滚动容器（wrapper）的视口顶部，纵向滚动时表头始终可见。
+   z-index 3 高于 fixed-right 列默认值，确保表头跨过固定列时层级正确。 */
+.accounts-table-excel .ant-table-thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: inherit;
+}
