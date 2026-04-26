@@ -11,11 +11,10 @@
    - 刷新 API: https://webhook.style/recovery-mails/update/TOKEN
    - 邮件 subject 含验证码: "Email verification code: 123456"
 """
+import logging
 import re
 import time
-import logging
-from typing import Optional, Tuple
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 import requests
 
@@ -27,7 +26,7 @@ CODE_PATTERN = re.compile(r'\b(\d{6})\b')
 SUBJECT_CODE_PATTERN = re.compile(r'(?:verification code|验证码)[:\s]*(\d{6})', re.IGNORECASE)
 
 
-def extract_verification_link(notes: str) -> Optional[str]:
+def extract_verification_link(notes: str) -> str | None:
     """从 notes 字段中提取验证链接"""
     if not notes:
         return None
@@ -57,7 +56,7 @@ def _detect_link_type(url: str) -> str:
     return "sms_api"
 
 
-def _fetch_code_from_sms_api(url: str, max_retries: int = 3, interval: float = 5.0) -> Tuple[bool, str]:
+def _fetch_code_from_sms_api(url: str, max_retries: int = 3, interval: float = 5.0) -> tuple[bool, str]:
     """从 SMS API 获取验证码
 
     返回: (成功?, 验证码或错误信息)
@@ -103,7 +102,7 @@ def _extract_token_from_webhook_url(url: str) -> str:
     return parts[-1] if parts else ""
 
 
-def _fetch_code_from_webhook(url: str, max_retries: int = 3, interval: float = 5.0) -> Tuple[bool, str]:
+def _fetch_code_from_webhook(url: str, max_retries: int = 3, interval: float = 5.0) -> tuple[bool, str]:
     """从 webhook.style 邮件 API 获取验证码
 
     返回: (成功?, 验证码或错误信息)
@@ -181,7 +180,7 @@ def fetch_verification_code(
     url: str,
     max_retries: int = 6,
     interval: float = 5.0,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """统一接口: 根据 URL 类型自动选择获取方式
 
     参数:

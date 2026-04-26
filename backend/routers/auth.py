@@ -1,9 +1,9 @@
 """认证路由 - 密码设置、登录"""
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from deps import (
-    get_auth_service,
     create_access_token,
+    get_auth_service,
 )
 from models.schemas import LoginRequest, SetPasswordRequest, TokenResponse
 from services.auth import AuthService

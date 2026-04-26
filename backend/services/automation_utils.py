@@ -1,13 +1,12 @@
 """自动化操作 - 共享工具函数 (从 routers/automation.py 提取)"""
 import json
 import logging
-import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from models.database import get_db_session, update_account_fields
 from models.orm import Account, Group
-from services.browser import browser_manager
 from services.automation import discover_family_by_cookies
+from services.browser import browser_manager
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ def save_oauth_credential(account_id: int, credential: dict) -> None:
             if "email" not in credential:
                 credential["email"] = account.email
             account.oauth_credential_json = json.dumps(credential)
-            account.updated_at = datetime.now(timezone.utc)
+            account.updated_at = datetime.now(UTC)
         logger.info(f"[oauth] 已保存 OAuth 凭证 → account #{account_id}")
     except Exception as e:
         logger.warning(f"[oauth] 保存 OAuth 凭证失败: {e}")
@@ -118,7 +117,7 @@ def save_subscription_status(account_id: int, subscription_status: str, subscrip
                 account.subscription_expiry = subscription_expiry
                 changed = True
             if changed:
-                account.updated_at = datetime.now(timezone.utc)
+                account.updated_at = datetime.now(UTC)
                 logger.info(f"[subscription] account #{account_id} → {subscription_status} {subscription_expiry}")
 
             # 主号 Ultra → 传播给同组所有子号
@@ -139,7 +138,7 @@ def save_subscription_status(account_id: int, subscription_status: str, subscrip
                             m.subscription_expiry = subscription_expiry
                             m_changed = True
                         if m_changed:
-                            m.updated_at = datetime.now(timezone.utc)
+                            m.updated_at = datetime.now(UTC)
                     if members:
                         logger.info(f"[subscription] Ultra 已传播给 {len(members)} 个子号")
     except Exception as e:

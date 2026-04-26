@@ -5,40 +5,38 @@ import queue
 
 from fastapi import WebSocket
 
+from core.constants import (
+    ACTION_FAMILY_ACCEPT,
+    ACTION_FAMILY_INVITE,
+    ACTION_FAMILY_REMOVE,
+    PHASE_ACCEPT_INVITE,
+    PHASE_DISCOVER_SYNC,
+    PHASE_INVITE_NEW,
+    PHASE_LOGIN_SUB,
+    PHASE_REMOVE_OLD,
+)
 from models.database import get_db_session
 from models.orm import Account, BrowserProfile
+from routers.automation_helpers import (
+    _create_step_handler,
+    _drain_task_queue,
+    _flush_step_messages,
+    _get_task_result,
+)
 from services.automation import (
+    CancellationToken,
+    discover_family_by_cookies,
     run_auto_login,
     run_remove_family_member,
     run_send_family_invite,
-    discover_family_by_cookies,
-    CancellationToken,
-)
-from services.browser import browser_manager
-from services.group_sync import sync_group_after_action, sync_group_from_discover
-
-from core.constants import (
-    ACTION_FAMILY_INVITE,
-    ACTION_FAMILY_REMOVE,
-    ACTION_FAMILY_ACCEPT,
-    PHASE_REMOVE_OLD,
-    PHASE_INVITE_NEW,
-    PHASE_LOGIN_SUB,
-    PHASE_ACCEPT_INVITE,
-    PHASE_DISCOVER_SYNC,
-)
-
-from routers.automation_helpers import (
-    _create_step_handler,
-    _flush_step_messages,
-    _drain_task_queue,
-    _get_task_result,
 )
 from services.automation_utils import (
     decrypt_field,
     save_browser_cookies,
     save_subscription_status,
 )
+from services.browser import browser_manager
+from services.group_sync import sync_group_after_action, sync_group_from_discover
 
 
 def _swap_ensure_browser_profile(account_id: int):
@@ -209,7 +207,7 @@ async def _swap_phase_login_and_accept(
                 test_cookies = json.loads(cookies_json)
 
                 def _validate_cookies(_c=test_cookies):
-                    with FamilyAPI(_c) as api:
+                    with FamilyAPI(_c):
                         pass  # constructor refresh_tokens 成功 = cookies 有效
 
                 await asyncio.get_event_loop().run_in_executor(None, _validate_cookies)

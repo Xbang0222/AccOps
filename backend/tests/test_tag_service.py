@@ -4,7 +4,7 @@ import unittest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from models.orm import Account, Base, Tag
+from models.orm import Account, Base
 from services.account import AccountService
 from services.tag import TagService
 

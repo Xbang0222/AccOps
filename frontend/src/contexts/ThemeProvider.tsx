@@ -1,12 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 
-export type ThemeMode = 'system' | 'light' | 'dark'
-
-export interface ThemeContextValue {
-  mode: ThemeMode
-  isDark: boolean
-  setMode: (mode: ThemeMode) => void
-}
+import { ThemeContext, type ThemeMode } from './themeContext'
 
 const STORAGE_KEY = 'theme-mode'
 
@@ -18,12 +12,6 @@ function resolveIsDark(mode: ThemeMode): boolean {
   if (mode === 'system') return getSystemDark()
   return mode === 'dark'
 }
-
-const ThemeContext = createContext<ThemeContextValue>({
-  mode: 'system',
-  isDark: false,
-  setMode: () => {},
-})
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(() => {
@@ -40,7 +28,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setIsDark(resolveIsDark(next))
   }, [])
 
-  // Listen for system preference changes when mode is 'system'
   useEffect(() => {
     if (mode !== 'system') return
 
@@ -50,7 +37,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return () => mql.removeEventListener('change', handler)
   }, [mode])
 
-  // Sync data-theme attribute on <html>
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
   }, [isDark])
@@ -60,8 +46,4 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       {children}
     </ThemeContext.Provider>
   )
-}
-
-export function useThemeMode(): ThemeContextValue {
-  return useContext(ThemeContext)
 }

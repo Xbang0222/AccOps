@@ -9,32 +9,29 @@
 import json
 import logging
 import shutil
-import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
 
-import pyotp
-from DrissionPage import WebPage, ChromiumOptions
+from DrissionPage import ChromiumOptions, WebPage
 
 from core.constants import (
-    BROWSER_PORT_MIN,
     BROWSER_PORT_MAX,
+    BROWSER_PORT_MIN,
     SEL_EMAIL_INPUT,
     SEL_EMAIL_NEXT,
-    SEL_SKIP_LATER_CN,
-    SEL_SKIP_NOT_NOW,
     SEL_SKIP,
+    SEL_SKIP_LATER_CN,
     SEL_SKIP_LATER_CN2,
+    SEL_SKIP_NOT_NOW,
 )
 from services.auth_steps import enter_password, enter_totp
 from services.page_wait import (
-    safe_navigate,
-    safe_ele,
     safe_click,
+    safe_ele,
     safe_input,
+    safe_navigate,
     safe_url,
     wait_page_stable,
 )
@@ -58,7 +55,7 @@ class BrowserManager:
     """管理所有 DrissionPage 浏览器实例"""
 
     def __init__(self):
-        self._instances: Dict[int, BrowserInstance] = {}
+        self._instances: dict[int, BrowserInstance] = {}
         PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
@@ -97,7 +94,7 @@ class BrowserManager:
     def is_running(self, profile_id: int) -> bool:
         return profile_id in self._instances
 
-    def get_running_ids(self) -> List[int]:
+    def get_running_ids(self) -> list[int]:
         return list(self._instances.keys())
 
     @staticmethod
@@ -111,7 +108,7 @@ class BrowserManager:
         except Exception:
             return False
 
-    async def launch(self, profile, *, headless: Optional[bool] = None) -> BrowserInstance:
+    async def launch(self, profile, *, headless: bool | None = None) -> BrowserInstance:
         """启动 DrissionPage 浏览器实例
 
         Args:
@@ -182,7 +179,7 @@ class BrowserManager:
             return {"status": "stopped", "profile_id": profile_id}
         return {"status": "running", "profile_id": profile_id}
 
-    def get_instance(self, profile_id: int) -> Optional[BrowserInstance]:
+    def get_instance(self, profile_id: int) -> BrowserInstance | None:
         return self._instances.get(profile_id)
 
     def get_page(self, profile_id: int):
@@ -257,7 +254,7 @@ class BrowserManager:
     # ── 存储分析与清理 ────────────────────────────────────
 
     # 黑名单: 明确可安全删除的文件和目录，不影响浏览器启动和登录态
-    CLEANABLE_TOP_DIRS: List[str] = [
+    CLEANABLE_TOP_DIRS: list[str] = [
         "optimization_guide_model_store",
         "component_crx_cache",
         "extensions_crx_cache",
@@ -293,7 +290,7 @@ class BrowserManager:
         "GPUPersistentCache",
         "NativeMessagingHosts",
     ]
-    CLEANABLE_TOP_FILES: List[str] = [
+    CLEANABLE_TOP_FILES: list[str] = [
         "BrowserMetrics-spare.pma",
         "first_party_sets.db",
         "first_party_sets.db-journal",
@@ -302,7 +299,7 @@ class BrowserManager:
         "VariationsSafeSeedV2",
         ".DS_Store",
     ]
-    CLEANABLE_DEFAULT_DIRS: List[str] = [
+    CLEANABLE_DEFAULT_DIRS: list[str] = [
         "Cache",
         "Code Cache",
         "Service Worker",
@@ -340,7 +337,7 @@ class BrowserManager:
         "optimization_guide_hint_cache_store",
         "VideoDecodeStats",
     ]
-    CLEANABLE_DEFAULT_FILES: List[str] = [
+    CLEANABLE_DEFAULT_FILES: list[str] = [
         "History", "History-journal",
         "Favicons", "Favicons-journal",
         "Web Data", "Web Data-journal",
@@ -430,7 +427,7 @@ class BrowserManager:
 
         total_bytes = 0
         cleanable_bytes = 0
-        profiles_info: List[dict] = []
+        profiles_info: list[dict] = []
 
         for child in sorted(PROFILES_DIR.iterdir()):
             if not child.is_dir() or child.name.startswith("."):
@@ -620,7 +617,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
         "myaccount" in url
         or "speedbump" in url  # passkey 引导页 (跳过按钮可能未点到, 但登录已完成)
         or "accounts.google.com/Default" in url
-        or "accounts.google.com/" == url.rstrip("/") + "/"
+        or url.rstrip("/") + "/" == "accounts.google.com/"
         or ("signin" not in url and "challenge" not in url and "accounts.google.com" in url)
         or "google.com" in url and "signin" not in url and "challenge" not in url
     )
@@ -633,7 +630,7 @@ def login_sync(page, email: str, password: str, totp_secret: str = "",
     return ok
 
 
-def handle_reauth_sync(page, password: str, totp_secret: str = "") -> Optional[str]:
+def handle_reauth_sync(page, password: str, totp_secret: str = "") -> str | None:
     """处理密码+TOTP 重验证, 返回 rapt token
 
     Returns: rapt token string, or None if no reauth needed
@@ -665,7 +662,7 @@ def handle_reauth_sync(page, password: str, totp_secret: str = "") -> Optional[s
     return rapt
 
 
-def get_rapt_sync(page, target_path: str, password: str, totp_secret: str = "") -> Optional[str]:
+def get_rapt_sync(page, target_path: str, password: str, totp_secret: str = "") -> str | None:
     """导航到需要 rapt 的页面, 完成重验证, 返回 rapt token"""
     safe_navigate(page, f"https://myaccount.google.com{target_path}", min_wait=2.0)
     return handle_reauth_sync(page, password, totp_secret)

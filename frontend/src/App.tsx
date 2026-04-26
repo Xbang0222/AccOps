@@ -8,7 +8,8 @@ import LoginPage from '@/pages/LoginPage'
 import { createRouter } from '@/router'
 import '@/styles/global.css'
 import { getThemeConfig } from '@/theme'
-import { ThemeProvider, useThemeMode } from '@/hooks/useThemeMode'
+import { ThemeProvider } from '@/contexts/ThemeProvider'
+import { useThemeMode } from '@/hooks/useThemeMode'
 
 function AppInner() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'))

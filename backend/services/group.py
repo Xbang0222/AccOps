@@ -1,12 +1,12 @@
 """分组服务 - 处理分组 CRUD 和成员管理"""
-from datetime import datetime, timezone
-from typing import List, Dict, Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
-from models.orm import Group, Account
+
+from core.constants import FAMILY_MAX_MEMBERS
+from models.orm import Account, Group
 from services.account import AccountService
 from services.group_sync import clear_account_family_state
-from core.constants import FAMILY_MAX_MEMBERS
 
 
 class GroupService:
@@ -18,7 +18,7 @@ class GroupService:
         self.db = db
         self.account_service = account_service
 
-    def _to_dict(self, group: Group, main_email: str = None) -> Dict:
+    def _to_dict(self, group: Group, main_email: str = None) -> dict:
         return {
             "id": group.id,
             "name": group.name,
@@ -29,8 +29,8 @@ class GroupService:
             "updated_at": group.updated_at.isoformat() if group.updated_at else None,
         }
 
-    def _ensure_main_account(self, accounts: List[Dict], main_id: int, group_id: int,
-                             *, _group_cache: dict = None) -> List[Dict]:
+    def _ensure_main_account(self, accounts: list[dict], main_id: int, group_id: int,
+                             *, _group_cache: dict = None) -> list[dict]:
         """主号的 family_group_id 意外丢失时，自动修复并补入列表"""
         if not main_id or any(a["id"] == main_id for a in accounts):
             return accounts
@@ -41,7 +41,7 @@ class GroupService:
             accounts.insert(0, self.account_service._to_dict(main_acc, _group_cache=_group_cache))
         return accounts
 
-    def get_all(self, search: str = "") -> List[Dict]:
+    def get_all(self, search: str = "") -> list[dict]:
         # 一次查出所有分组 + 主号邮箱
         rows = (
             self.db.query(Group, Account.email)
@@ -62,7 +62,7 @@ class GroupService:
         # 构建 group 缓存，供 _to_dict 内部使用（避免成员列表的 N+1）
         group_cache = {group.id: group for group, _ in rows}
 
-        members_by_group: Dict[int, List[Dict]] = {}
+        members_by_group: dict[int, list[dict]] = {}
         for member in all_members:
             gid = member.family_group_id
             if gid not in members_by_group:
@@ -88,7 +88,7 @@ class GroupService:
             result.append(d)
         return result
 
-    def get_by_id(self, group_id: int) -> Optional[Dict]:
+    def get_by_id(self, group_id: int) -> dict | None:
         result = (
             self.db.query(Group, Account.email)
             .outerjoin(Account, Group.main_account_id == Account.id)
@@ -100,7 +100,7 @@ class GroupService:
         group, email = result
         return self._to_dict(group, email)
 
-    def get_with_accounts(self, group_id: int) -> Optional[Dict]:
+    def get_with_accounts(self, group_id: int) -> dict | None:
         """获取分组详情（含成员列表）"""
         group_dict = self.get_by_id(group_id)
         if group_dict:
@@ -110,7 +110,7 @@ class GroupService:
             )
         return group_dict
 
-    def get_accounts(self, group_id: int) -> List[Dict]:
+    def get_accounts(self, group_id: int) -> list[dict]:
         """获取分组内所有账号"""
         rows = (
             self.db.query(Account)
@@ -134,7 +134,7 @@ class GroupService:
         group.name = name
         group.main_account_id = main_account_id
         group.notes = notes
-        group.updated_at = datetime.now(timezone.utc)
+        group.updated_at = datetime.now(UTC)
         self.db.commit()
 
     def delete(self, group_id: int):
@@ -153,7 +153,7 @@ class GroupService:
 
         account = self.db.query(Account).get(account_id)
         if account:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if account.family_group_id != group_id:
                 # 已在其他分组 → 先走退出逻辑
                 if account.family_group_id is not None:
@@ -176,5 +176,5 @@ class GroupService:
         group = self.db.get(Group, group_id)
         if group:
             group.main_account_id = account_id
-            group.updated_at = datetime.now(timezone.utc)
+            group.updated_at = datetime.now(UTC)
             self.db.commit()

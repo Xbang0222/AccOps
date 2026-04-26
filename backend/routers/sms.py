@@ -1,8 +1,6 @@
 """接码管理路由 - 多提供商支持"""
 import logging
-import re
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -10,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from deps import verify_token
 from models.database import get_db
-from models.orm import Config, SmsProvider, SmsActivation
+from models.orm import Config, SmsActivation, SmsProvider
 from services.sms_api import create_provider
 
 logger = logging.getLogger(__name__)
@@ -68,21 +66,21 @@ class ProviderCreateBody(BaseModel):
     notes: str = ""
 
 class ProviderUpdateBody(BaseModel):
-    name: Optional[str] = None
-    provider_type: Optional[str] = None
-    api_key: Optional[str] = None
-    default_country: Optional[int] = None
-    default_service: Optional[str] = None
-    notes: Optional[str] = None
+    name: str | None = None
+    provider_type: str | None = None
+    api_key: str | None = None
+    default_country: int | None = None
+    default_service: str | None = None
+    notes: str | None = None
 
 class RequestNumberBody(BaseModel):
-    provider_id: Optional[int] = None
+    provider_id: int | None = None
     service: str
     country: int
-    operator: Optional[str] = ""
-    max_price: Optional[float] = None
-    account_id: Optional[int] = None
-    account_email: Optional[str] = ""
+    operator: str | None = ""
+    max_price: float | None = None
+    account_id: int | None = None
+    account_email: str | None = ""
 
 
 # ── 提供商 CRUD ──────────────────────────────────────
@@ -123,7 +121,7 @@ def update_provider_route(provider_id: int, body: ProviderUpdateBody, db: Sessio
         if val is not None:
             setattr(p, field, val)
 
-    p.updated_at = datetime.now(timezone.utc)
+    p.updated_at = datetime.now(UTC)
     db.commit()
     return _provider_to_dict(p)
 
@@ -142,13 +140,13 @@ def delete_provider_route(provider_id: int, db: Session = Depends(get_db)):
 # ── 余额 ─────────────────────────────────────────────
 
 @router.get("/balance")
-def get_balance(provider_id: Optional[int] = None, db: Session = Depends(get_db)):
+def get_balance(provider_id: int | None = None, db: Session = Depends(get_db)):
     """查询余额"""
     api, p = _get_provider_api(db, provider_id)
     ok, result = api.get_balance()
     if ok:
         p.balance = result
-        p.updated_at = datetime.now(timezone.utc)
+        p.updated_at = datetime.now(UTC)
         db.commit()
         return {"balance": result}
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result)
@@ -196,7 +194,7 @@ def request_number(body: RequestNumberBody, db: Session = Depends(get_db)):
 # ── 查询验证码 ───────────────────────────────────────
 
 @router.get("/status/{activation_id}")
-def check_status(activation_id: str, provider_id: Optional[int] = None, db: Session = Depends(get_db)):
+def check_status(activation_id: str, provider_id: int | None = None, db: Session = Depends(get_db)):
     """查询激活状态"""
     record = db.query(SmsActivation).filter(SmsActivation.activation_id == activation_id).first()
     pid = provider_id or (record.provider_id if record else None)
@@ -213,12 +211,12 @@ def check_status(activation_id: str, provider_id: Optional[int] = None, db: Sess
             record.sms_code = code
             record.sms_text = info
             record.status = "code_received"
-            record.updated_at = datetime.now(timezone.utc)
+            record.updated_at = datetime.now(UTC)
             db.commit()
     elif status == "CANCEL":
         if record:
             record.status = "cancelled"
-            record.updated_at = datetime.now(timezone.utc)
+            record.updated_at = datetime.now(UTC)
             db.commit()
 
     return result
@@ -227,27 +225,27 @@ def check_status(activation_id: str, provider_id: Optional[int] = None, db: Sess
 # ── 完成 / 取消 ──────────────────────────────────────
 
 @router.post("/finish/{activation_id}")
-def finish_activation(activation_id: str, provider_id: Optional[int] = None, db: Session = Depends(get_db)):
+def finish_activation(activation_id: str, provider_id: int | None = None, db: Session = Depends(get_db)):
     record = db.query(SmsActivation).filter(SmsActivation.activation_id == activation_id).first()
     pid = provider_id or (record.provider_id if record else None)
     api, _ = _get_provider_api(db, pid)
     result = api.finish(activation_id)
     if record:
         record.status = "finished"
-        record.updated_at = datetime.now(timezone.utc)
+        record.updated_at = datetime.now(UTC)
         db.commit()
     return {"result": result}
 
 
 @router.post("/cancel/{activation_id}")
-def cancel_activation(activation_id: str, provider_id: Optional[int] = None, db: Session = Depends(get_db)):
+def cancel_activation(activation_id: str, provider_id: int | None = None, db: Session = Depends(get_db)):
     record = db.query(SmsActivation).filter(SmsActivation.activation_id == activation_id).first()
     pid = provider_id or (record.provider_id if record else None)
     api, _ = _get_provider_api(db, pid)
     result = api.cancel(activation_id)
     if record:
         record.status = "cancelled"
-        record.updated_at = datetime.now(timezone.utc)
+        record.updated_at = datetime.now(UTC)
         db.commit()
     return {"result": result}
 
@@ -255,7 +253,7 @@ def cancel_activation(activation_id: str, provider_id: Optional[int] = None, db:
 # ── 历史记录 ─────────────────────────────────────────
 
 @router.get("/history")
-def get_history(page: int = 1, page_size: int = 20, status: Optional[str] = None, db: Session = Depends(get_db)):
+def get_history(page: int = 1, page_size: int = 20, status: str | None = None, db: Session = Depends(get_db)):
     query = db.query(SmsActivation).order_by(SmsActivation.id.desc())
     if status:
         query = query.filter(SmsActivation.status == status)
@@ -281,19 +279,19 @@ def get_history(page: int = 1, page_size: int = 20, status: Optional[str] = None
 # ── 国家/服务列表 ────────────────────────────────────
 
 @router.get("/countries")
-def get_countries(provider_id: Optional[int] = None, db: Session = Depends(get_db)):
+def get_countries(provider_id: int | None = None, db: Session = Depends(get_db)):
     api, _ = _get_provider_api(db, provider_id)
     return api.get_countries()
 
 
 @router.get("/services")
-def get_services(provider_id: Optional[int] = None, db: Session = Depends(get_db)):
+def get_services(provider_id: int | None = None, db: Session = Depends(get_db)):
     api, _ = _get_provider_api(db, provider_id)
     return api.get_services()
 
 
 @router.get("/prices-by-service/{service}")
-def get_prices_by_service(service: str, provider_id: Optional[int] = None, db: Session = Depends(get_db)):
+def get_prices_by_service(service: str, provider_id: int | None = None, db: Session = Depends(get_db)):
     """获取某服务在各国的价格和可用数量"""
     api, _ = _get_provider_api(db, provider_id)
     return api.get_prices_by_service(service)

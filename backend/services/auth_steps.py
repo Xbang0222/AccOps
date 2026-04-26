@@ -16,8 +16,8 @@ from core.constants import (
     SEL_TOTP_NEXT,
 )
 from services.page_wait import (
-    safe_ele,
     safe_click,
+    safe_ele,
     safe_input,
     safe_url,
     wait_page_stable,

@@ -2,6 +2,7 @@
 
 按功能域分组, 消除散落在各模块中的魔法值。
 """
+import os as _os
 
 # ============================================================
 # Google Family API (services/family_api.py)
@@ -70,7 +71,6 @@ BROWSER_PORT_MAX = 59600
 # ============================================================
 
 # -- OAuth client credentials (从环境变量读取) --
-import os as _os
 OAUTH_CLIENT_ID = _os.environ.get(
     "GAM_OAUTH_CLIENT_ID",
     "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",

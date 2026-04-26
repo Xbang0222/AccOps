@@ -2,7 +2,7 @@ import unittest
 
 from fastapi.security import HTTPAuthorizationCredentials
 
-from deps import create_access_token, verify_token, verify_ws_token, state
+from deps import create_access_token, state, verify_token, verify_ws_token
 
 
 class AuthTokenPersistenceTests(unittest.TestCase):

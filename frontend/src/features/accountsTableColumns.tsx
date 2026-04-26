@@ -18,7 +18,7 @@ import {
 } from '@ant-design/icons'
 
 import type { Account } from '@/types'
-import { isAbnormalPoolStatus } from '@/constants/accountStatus'
+import { isAbnormalStatus } from '@/constants/accountStatus'
 import { maskEmail } from '@/utils/mask'
 
 const { Text } = Typography
@@ -137,11 +137,11 @@ export function createAccountTableColumns({
       key: 'use_status',
       width: 100,
       render: (_: unknown, record: Account) => {
-        const poolStatus = record.pool_status || ''
-        if (poolStatus === 'unusable') {
+        const status = record.status || ''
+        if (status === 'unusable') {
           return <Tag color="red" style={{ margin: 0, fontSize: 11 }}>无法使用</Tag>
         }
-        if (poolStatus === 'retired') {
+        if (status === 'retired') {
           return <Tag color="default" style={{ margin: 0, fontSize: 11 }}>废弃号</Tag>
         }
         return null
@@ -212,7 +212,7 @@ export function createAccountTableColumns({
             <Tooltip title="编辑">
               <Button type="text" size="small" icon={<EditOutlined style={{ color: '#8c8c8c' }} />} onClick={() => onEdit(record)} />
             </Tooltip>
-            {isAbnormalPoolStatus(record.pool_status) ? (
+            {isAbnormalStatus(record.status) ? (
               <Tooltip title="恢复正常">
                 <Button type="text" size="small" icon={<UndoOutlined style={{ color: '#52c41a' }} />} onClick={() => onClearStatus(record.id)} />
               </Tooltip>

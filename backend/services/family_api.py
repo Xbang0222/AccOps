@@ -18,34 +18,38 @@
 import json
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 
 from core.constants import (
     FAMILY_BASE_URL as BASE_URL,
+)
+from core.constants import (
     FAMILY_BATCHEXECUTE_URL as BATCHEXECUTE_URL,
-    FAMILY_ROLE_ADMIN as ROLE_ADMIN,
-    FAMILY_ROLE_MEMBER as ROLE_MEMBER,
-    FAMILY_ROLE_NAMES as ROLE_NAMES,
-    FAMILY_USER_AGENT,
-    FAMILY_HTTP_TIMEOUT,
+)
+from core.constants import (
     FAMILY_DEFAULT_REQID,
-    RPC_QUERY_STATUS,
-    RPC_QUERY_MEMBERS,
+    FAMILY_HTTP_TIMEOUT,
+    FAMILY_USER_AGENT,
+    RPC_ACCEPT_INVITE,
+    RPC_CANCEL_INVITE,
     RPC_CREATE_STEP1,
     RPC_CREATE_STEP2,
     RPC_CREATE_STEP3,
+    RPC_DELETE_FAMILY,
     RPC_INVITE_INIT,
     RPC_INVITE_SEND,
-    RPC_ACCEPT_INVITE,
-    RPC_CANCEL_INVITE,
+    RPC_QUERY_MEMBERS,
+    RPC_QUERY_STATUS,
     RPC_REMOVE_MEMBER,
-    RPC_DELETE_FAMILY,
     WIZ_TOKEN_AT,
-    WIZ_TOKEN_FSID,
     WIZ_TOKEN_BL,
+    WIZ_TOKEN_FSID,
+)
+from core.constants import (
+    FAMILY_ROLE_ADMIN as ROLE_ADMIN,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,7 +151,7 @@ class FamilyAPI:
         rpc_id: str,
         payload: str,
         source_path: str = "/family/details",
-        rapt: Optional[str] = None,
+        rapt: str | None = None,
         seq: str = "generic",
     ) -> dict[str, Any]:
         """发送 batchexecute RPC 请求"""

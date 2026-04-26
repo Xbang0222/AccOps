@@ -196,7 +196,7 @@ cookies 过期时的自动恢复机制 (4 级回退):
 6. 用 cookies 自动接受邀请
 7. 完整 discover 同步（与"同步"按钮一致）
 
-> 号池管理已在 b70bda7 移除，换号需显式提供邮箱列表；移除子号会被标记为 `retired`。
+> 号池管理已在 b70bda7 移除（pool_group_id / pool_use_count / pool_last_used_at 三个字段已彻底删除）；保留 `Account.status` 字段记录账号状态：`""`（正常）/ `"unusable"`（手工标记无法使用）/ `"retired"`（被移出家庭组）。换号需显式提供邮箱列表。
 
 **关键改进:** 换号完成后执行完整的 `discover_family_by_cookies` + `sync_group_from_discover`，确保数据库与 Google 实际状态完全一致。
 

@@ -6,54 +6,50 @@ import queue
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from models.database import get_db_session
-from models.orm import Account, BrowserProfile
-from services.automation import (
-    run_auto_login,
-    run_create_family_group,
-    run_send_family_invite,
-    run_accept_family_invite,
-    run_remove_family_member,
-    run_leave_family_group,
-    discover_family_by_cookies,
-    run_oauth,
-    run_phone_verify,
-    CancellationToken,
-    CancelledError,
-)
-from services.browser import browser_manager
-from services.group_sync import sync_group_after_action, sync_group_from_discover
-
 from core.constants import (
-    ACTION_LOGIN,
-    ACTION_FAMILY_CREATE,
-    ACTION_FAMILY_INVITE,
     ACTION_FAMILY_ACCEPT,
-    ACTION_FAMILY_REMOVE,
-    ACTION_FAMILY_LEAVE,
-    ACTION_FAMILY_DISCOVER,
     ACTION_FAMILY_BATCH_INVITE,
     ACTION_FAMILY_BATCH_REMOVE,
+    ACTION_FAMILY_CREATE,
+    ACTION_FAMILY_DISCOVER,
+    ACTION_FAMILY_INVITE,
+    ACTION_FAMILY_LEAVE,
+    ACTION_FAMILY_REMOVE,
     ACTION_FAMILY_SWAP,
+    ACTION_LOGIN,
     ACTION_OAUTH,
     ACTION_PHONE_VERIFY,
 )
-
+from models.database import get_db_session
+from models.orm import Account, BrowserProfile
 from routers.automation_helpers import (
     _create_step_handler,
-    _flush_step_messages,
-    _poll_cancel_command,
     _drain_task_queue,
     _get_task_result,
 )
+from routers.automation_swap import _handle_family_swap
+from services.automation import (
+    CancellationToken,
+    CancelledError,
+    discover_family_by_cookies,
+    run_accept_family_invite,
+    run_auto_login,
+    run_create_family_group,
+    run_leave_family_group,
+    run_oauth,
+    run_phone_verify,
+    run_remove_family_member,
+    run_send_family_invite,
+)
 from services.automation_utils import (
     decrypt_field,
+    handle_login_success,
     save_browser_cookies,
     save_oauth_credential,
-    handle_login_success,
     save_subscription_status,
 )
-from routers.automation_swap import _handle_family_swap
+from services.browser import browser_manager
+from services.group_sync import sync_group_after_action, sync_group_from_discover
 
 logger = logging.getLogger(__name__)
 

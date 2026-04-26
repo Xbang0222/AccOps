@@ -1,11 +1,12 @@
 """应用工厂 - FastAPI 应用 (RPC 版)"""
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import config
 from models.database import run_migrations
-from routers import auth, accounts, groups, dashboard, browser, automation, automation_ws, settings, sms, tags, cliproxy
+from routers import accounts, auth, automation, automation_ws, browser, cliproxy, dashboard, groups, settings, sms, tags
 
 
 @asynccontextmanager

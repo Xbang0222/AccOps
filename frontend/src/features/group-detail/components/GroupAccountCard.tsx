@@ -29,7 +29,7 @@ import {
 import { getAutomationOperationIcon } from '@/features/automation/operationPresentation'
 import { maskEmail } from '@/utils/mask'
 import type { Account } from '@/types'
-import { isAbnormalPoolStatus } from '@/constants/accountStatus'
+import { isAbnormalStatus } from '@/constants/accountStatus'
 import { useAccountOpState } from '@/contexts/automationContext'
 
 const { Text } = Typography
@@ -221,7 +221,7 @@ export function GroupAccountCard({
                   <Button type="text" size="small" icon={<CopyOutlined style={{ color: '#faad14' }} />} onClick={() => onCopyText(account.password, '密码')} style={{ padding: '0 4px' }} />
                 </Tooltip>
               ) : null}
-              {isAbnormalPoolStatus(account.pool_status) ? (
+              {isAbnormalStatus(account.status) ? (
                 <Tooltip title="恢复正常">
                   <Button type="text" size="small" icon={<UndoOutlined style={{ color: '#52c41a' }} />} onClick={() => onClearStatus(account.id)} style={{ padding: '0 4px' }} />
                 </Tooltip>
@@ -277,7 +277,7 @@ export function GroupAccountCard({
                   <Button type="text" size="small" icon={<CopyOutlined style={{ color: '#faad14' }} />} onClick={() => onCopyText(account.password, '密码')} style={{ padding: '0 4px' }} />
                 </Tooltip>
               ) : null}
-              {isAbnormalPoolStatus(account.pool_status) ? (
+              {isAbnormalStatus(account.status) ? (
                 <Tooltip title="恢复正常">
                   <Button type="text" size="small" icon={<UndoOutlined style={{ color: '#52c41a' }} />} onClick={() => onClearStatus(account.id)} style={{ padding: '0 4px' }} />
                 </Tooltip>

@@ -6,27 +6,29 @@ import logging
 import re
 import time
 import uuid
-from typing import Optional, Tuple
 
 import httpx
 
 from core.constants import (
     ANTIGRAVITY_API_CLIENT as ANTIGRAVITY_API_CLIENT,
+)
+from core.constants import (
     ANTIGRAVITY_API_ENDPOINT as API_ENDPOINT,
+)
+from core.constants import (
     ANTIGRAVITY_API_USER_AGENT as API_USER_AGENT,
+)
+from core.constants import (
     ANTIGRAVITY_API_VERSION as API_VERSION,
+)
+from core.constants import (
     ANTIGRAVITY_CLIENT_METADATA as CLIENT_METADATA,
+)
+from core.constants import (
     ANTIGRAVITY_DAILY_ENDPOINT,
     ANTIGRAVITY_DEFAULT_MODEL,
     ANTIGRAVITY_STREAM_PATH,
     FAMILY_HTTP_TIMEOUT,
-    OAUTH_AUTH_ENDPOINT as AUTH_ENDPOINT,
-    OAUTH_CLIENT_ID as CLIENT_ID,
-    OAUTH_CLIENT_SECRET as CLIENT_SECRET,
-    OAUTH_REDIRECT_URI as REDIRECT_URI,
-    OAUTH_SCOPES as SCOPES,
-    OAUTH_TOKEN_ENDPOINT as TOKEN_ENDPOINT,
-    OAUTH_USERINFO_ENDPOINT as USERINFO_ENDPOINT,
     SEL_OAUTH_ALLOW,
     SEL_OAUTH_ALLOW_CN,
     SEL_OAUTH_APPROVE,
@@ -37,8 +39,29 @@ from core.constants import (
     SEL_PASSWORD_INPUT,
     SEL_TOTP_INPUT,
 )
+from core.constants import (
+    OAUTH_AUTH_ENDPOINT as AUTH_ENDPOINT,
+)
+from core.constants import (
+    OAUTH_CLIENT_ID as CLIENT_ID,
+)
+from core.constants import (
+    OAUTH_CLIENT_SECRET as CLIENT_SECRET,
+)
+from core.constants import (
+    OAUTH_REDIRECT_URI as REDIRECT_URI,
+)
+from core.constants import (
+    OAUTH_SCOPES as SCOPES,
+)
+from core.constants import (
+    OAUTH_TOKEN_ENDPOINT as TOKEN_ENDPOINT,
+)
+from core.constants import (
+    OAUTH_USERINFO_ENDPOINT as USERINFO_ENDPOINT,
+)
 from services.auth_steps import enter_password, enter_totp
-from services.page_wait import safe_ele, safe_click, safe_url
+from services.page_wait import safe_click, safe_ele, safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +186,7 @@ def onboard_user(access_token: str, tier_id: str = "legacy-tier") -> str:
     return ""
 
 
-def probe_api(access_token: str, project_id: str = "") -> Tuple[bool, str, Optional[str]]:
+def probe_api(access_token: str, project_id: str = "") -> tuple[bool, str, str | None]:
     """探测 API 是否可用。"""
     response = httpx.post(
         f"{ANTIGRAVITY_DAILY_ENDPOINT}{ANTIGRAVITY_STREAM_PATH}",
@@ -196,7 +219,7 @@ def probe_api(access_token: str, project_id: str = "") -> Tuple[bool, str, Optio
     return False, f"HTTP {response.status_code}: {error_text[:500]}", None
 
 
-def extract_validation_url(error_text: str) -> Optional[str]:
+def extract_validation_url(error_text: str) -> str | None:
     """从 Google API 403 错误响应中提取 validation_url。"""
     try:
         data = json.loads(error_text)
@@ -221,7 +244,7 @@ def extract_validation_url(error_text: str) -> Optional[str]:
     return None
 
 
-def check_for_code(url: str) -> Optional[str]:
+def check_for_code(url: str) -> str | None:
     """从 URL 中提取 authorization code。"""
     if "localhost:51121/oauth-callback" in url or ("code=" in url and "accounts.google" not in url):
         match = re.search(r'[?&]code=([^&]+)', url)
@@ -230,7 +253,7 @@ def check_for_code(url: str) -> Optional[str]:
     return None
 
 
-def check_for_error(url: str) -> Optional[str]:
+def check_for_error(url: str) -> str | None:
     """从 URL 中提取 error。"""
     if "error=" in url and "localhost" in url:
         match = re.search(r'[?&]error=([^&]+)', url)

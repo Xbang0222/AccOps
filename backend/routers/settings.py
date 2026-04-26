@@ -1,13 +1,12 @@
 """系统设置路由"""
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import Optional
 from sqlalchemy.orm import Session
 
 from deps import verify_token
 from models.database import get_db
 from models.orm import Config
-
 
 router = APIRouter(
     prefix="/settings",
@@ -77,16 +76,16 @@ class SettingsResponse(BaseModel):
 
 
 class SettingsUpdateRequest(BaseModel):
-    debug_mode: Optional[bool] = None
-    headless_mode: Optional[bool] = None
-    default_sms_provider_id: Optional[str] = None
-    age_verify_enabled: Optional[bool] = None
-    card_number: Optional[str] = None
-    card_expiry: Optional[str] = None
-    card_cvv: Optional[str] = None
-    card_zip: Optional[str] = None
-    cliproxy_base_url: Optional[str] = None
-    cliproxy_api_key: Optional[str] = None
+    debug_mode: bool | None = None
+    headless_mode: bool | None = None
+    default_sms_provider_id: str | None = None
+    age_verify_enabled: bool | None = None
+    card_number: str | None = None
+    card_expiry: str | None = None
+    card_cvv: str | None = None
+    card_zip: str | None = None
+    cliproxy_base_url: str | None = None
+    cliproxy_api_key: str | None = None
 
 
 def _build_response(db: Session) -> SettingsResponse:

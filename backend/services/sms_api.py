@@ -9,17 +9,16 @@ import logging
 import re
 import time
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Dict, List
 
 import httpx
 
 from core.constants import (
     COUNTRY_PHONE_CODES,
     HEROSMS_DEFAULT_URL,
-    SMSBUS_DEFAULT_URL,
-    SMS_WAIT_TIMEOUT,
-    SMS_POLL_INTERVAL,
     SMS_HTTP_TIMEOUT,
+    SMS_POLL_INTERVAL,
+    SMS_WAIT_TIMEOUT,
+    SMSBUS_DEFAULT_URL,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,18 +50,18 @@ class SmsProviderBase(ABC):
     def default_base_url(self) -> str: ...
 
     @abstractmethod
-    def get_balance(self) -> Tuple[bool, str]:
+    def get_balance(self) -> tuple[bool, str]:
         """返回: (成功?, 余额字符串)"""
         ...
 
     @abstractmethod
     def get_number(self, service: str, country: int, operator: str = "",
-                   max_price: float = None) -> Tuple[bool, dict]:
+                   max_price: float = None) -> tuple[bool, dict]:
         """返回: (成功?, {activation_id, phone_number, cost, ...} 或 {error: ...})"""
         ...
 
     @abstractmethod
-    def get_status(self, activation_id: str) -> Tuple[str, str]:
+    def get_status(self, activation_id: str) -> tuple[str, str]:
         """返回: (状态码, 验证码或附加信息)
         统一状态码: WAIT / RECEIVED:<code> / CANCEL / ERROR:<msg>
         """
@@ -94,7 +93,7 @@ class SmsProviderBase(ABC):
         ...
 
     def wait_for_code(self, activation_id: str, timeout: int = SMS_WAIT_TIMEOUT,
-                      interval: float = SMS_POLL_INTERVAL) -> Tuple[bool, str, str]:
+                      interval: float = SMS_POLL_INTERVAL) -> tuple[bool, str, str]:
         """轮询等待验证码 (通用实现)
         返回: (成功?, 纯验证码, 完整短信)
         """
@@ -125,7 +124,7 @@ class HeroSmsProvider(SmsProviderBase):
 
     def __init__(self, api_key: str, base_url: str = ""):
         super().__init__(api_key, base_url)
-        self._country_cache: Optional[dict] = None  # id -> name 缓存
+        self._country_cache: dict | None = None  # id -> name 缓存
 
     @property
     def default_base_url(self) -> str:
@@ -143,14 +142,14 @@ class HeroSmsProvider(SmsProviderBase):
         resp = httpx.get(self.base_url, params=params, timeout=SMS_HTTP_TIMEOUT)
         return resp.json()
 
-    def get_balance(self) -> Tuple[bool, str]:
+    def get_balance(self) -> tuple[bool, str]:
         text = self._get("getBalance")
         if text.startswith("ACCESS_BALANCE:"):
             return True, text.split(":")[1]
         return False, text
 
     def get_number(self, service: str, country: int, operator: str = "",
-                   max_price: float = None) -> Tuple[bool, dict]:
+                   max_price: float = None) -> tuple[bool, dict]:
         params = {"service": service, "country": country}
         if operator:
             params["operator"] = operator
@@ -173,7 +172,7 @@ class HeroSmsProvider(SmsProviderBase):
                 return True, {"activation_id": parts[1], "phone_number": parts[2], "cost": "", "operator": ""}
             return False, {"error": text}
 
-    def get_status(self, activation_id: str) -> Tuple[str, str]:
+    def get_status(self, activation_id: str) -> tuple[str, str]:
         text = self._get("getStatus", id=activation_id)
         if text.startswith("STATUS_OK:"):
             code = text.split(":", 1)[1].strip()
@@ -273,7 +272,7 @@ class SmsBusProvider(SmsProviderBase):
         resp = httpx.get(url, params=params, timeout=SMS_HTTP_TIMEOUT)
         return resp.json()
 
-    def get_balance(self) -> Tuple[bool, str]:
+    def get_balance(self) -> tuple[bool, str]:
         data = self._get("get/balance")
         if data.get("code") == 200:
             balance = data.get("data", {}).get("balance", 0)
@@ -281,7 +280,7 @@ class SmsBusProvider(SmsProviderBase):
         return False, data.get("message", "未知错误")
 
     def get_number(self, service: str, country: int, operator: str = "",
-                   max_price: float = None) -> Tuple[bool, dict]:
+                   max_price: float = None) -> tuple[bool, dict]:
         # SMS-Bus 用 project_id (int) + country_id (int)
         # service 传过来的可能是 code 字符串, 需要转 project_id
         params = {"country_id": country, "project_id": service}
@@ -296,7 +295,7 @@ class SmsBusProvider(SmsProviderBase):
             }
         return False, {"error": data.get("message", str(data))}
 
-    def get_status(self, activation_id: str) -> Tuple[str, str]:
+    def get_status(self, activation_id: str) -> tuple[str, str]:
         data = self._get("get/sms", request_id=activation_id)
         if data.get("code") == 200:
             code = str(data.get("data", ""))

@@ -2,10 +2,10 @@
 import logging
 import os
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from config import DATABASE_URL
 
@@ -23,6 +23,7 @@ def run_migrations() -> None:
     """
     try:
         from alembic.config import Config
+
         from alembic import command
 
         alembic_ini = os.path.join(os.path.dirname(__file__), '..', 'alembic.ini')
@@ -73,4 +74,4 @@ def update_account_fields(account_id: int, **fields):
         if account:
             for key, value in fields.items():
                 setattr(account, key, value)
-            account.updated_at = datetime.now(timezone.utc)
+            account.updated_at = datetime.now(UTC)

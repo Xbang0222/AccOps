@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Callable, Iterator, Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from core.constants import (
-    ACTION_FAMILY_ACCEPT, ACTION_FAMILY_CREATE, ACTION_FAMILY_LEAVE,
-    ACTION_FAMILY_REMOVE, FAMILY_MAX_MEMBERS,
+    ACTION_FAMILY_ACCEPT,
+    ACTION_FAMILY_CREATE,
+    ACTION_FAMILY_LEAVE,
+    ACTION_FAMILY_REMOVE,
+    FAMILY_MAX_MEMBERS,
 )
 from models.database import get_db_session
 from models.orm import Account, Group
@@ -31,7 +34,7 @@ def sync_group_after_action(
     account_id: int,
     success: bool,
     result_msg: str,
-    extra: Optional[dict] = None,
+    extra: dict | None = None,
     session_factory: SessionFactory = get_db_session,
 ) -> None:
     """自动化操作成功后，同步家庭组关系到数据库分组。"""
@@ -106,7 +109,7 @@ def _sync_created_group(db: Session, account: Account) -> None:
     group.main_account_id = account.id
     group.member_count = max(group.member_count or 0, 1)
     account.family_group_id = group.id
-    account.updated_at = datetime.now(timezone.utc)
+    account.updated_at = datetime.now(UTC)
     logger.info("[sync_group] 已创建分组 #%s 并设置 %s 为管理员", group.id, account.email)
 
 
@@ -118,14 +121,14 @@ def _sync_accepted_group(db: Session, account: Account, extra: dict) -> None:
         joined_group_id = _resolve_join_group_id(db, extra)
         if joined_group_id:
             account.family_group_id = joined_group_id
-            account.updated_at = datetime.now(timezone.utc)
+            account.updated_at = datetime.now(UTC)
             logger.info("[sync_group] 已将 %s 加入分组 #%s", account.email, joined_group_id)
 
     if joined_group_id:
         _inherit_owner_subscription(db, account, joined_group_id)
 
 
-def _resolve_join_group_id(db: Session, extra: dict) -> Optional[int]:
+def _resolve_join_group_id(db: Session, extra: dict) -> int | None:
     group_id = extra.get("group_id")
     if group_id:
         group = db.query(Group).filter(Group.id == group_id).first()
@@ -162,7 +165,7 @@ def _inherit_owner_subscription(db: Session, account: Account, group_id: int) ->
 
     account.subscription_status = main_account.subscription_status
     account.subscription_expiry = main_account.subscription_expiry or ""
-    account.updated_at = datetime.now(timezone.utc)
+    account.updated_at = datetime.now(UTC)
     logger.info("[sync_group] %s 继承主号 Ultra 订阅", account.email)
 
 
@@ -206,7 +209,7 @@ def _sync_manager_discover(db: Session, account: Account, discover_result) -> No
         group = db.query(Group).filter(Group.id == account.family_group_id).first()
         if group and group.main_account_id == account.id:
             group.member_count = discover_result.member_count
-            group.updated_at = datetime.now(timezone.utc)
+            group.updated_at = datetime.now(UTC)
             logger.info("[discover_sync] %s 已是分组 #%s 管理员, 更新成员数=%s", account.email, group.id, discover_result.member_count)
             _sync_members_from_discover(db, group.id, discover_result.members)
             return
@@ -217,9 +220,9 @@ def _sync_manager_discover(db: Session, account: Account, discover_result) -> No
         if existing_group:
             # 复用已有分组，但不覆盖用户设置的名称
             existing_group.member_count = discover_result.member_count
-            existing_group.updated_at = datetime.now(timezone.utc)
+            existing_group.updated_at = datetime.now(UTC)
             account.family_group_id = existing_group.id
-            account.updated_at = datetime.now(timezone.utc)
+            account.updated_at = datetime.now(UTC)
             logger.info("[discover_sync] %s 旧分组无效, 切换到已有管理员分组 #%s", account.email, existing_group.id)
             _sync_members_from_discover(db, existing_group.id, discover_result.members)
             return
@@ -232,9 +235,9 @@ def _sync_manager_discover(db: Session, account: Account, discover_result) -> No
     if group:
         group.member_count = discover_result.member_count
         # 不覆盖用户手动设置的分组名
-        group.updated_at = datetime.now(timezone.utc)
+        group.updated_at = datetime.now(UTC)
         account.family_group_id = group.id
-        account.updated_at = datetime.now(timezone.utc)
+        account.updated_at = datetime.now(UTC)
         logger.info("[discover_sync] 复用已有分组 #%s 给管理员 %s", group.id, account.email)
     else:
         group = Group(name=f"{account.email} 的家庭组", member_count=discover_result.member_count)
@@ -242,7 +245,7 @@ def _sync_manager_discover(db: Session, account: Account, discover_result) -> No
         db.flush()
         group.main_account_id = account.id
         account.family_group_id = group.id
-        account.updated_at = datetime.now(timezone.utc)
+        account.updated_at = datetime.now(UTC)
         logger.info("[discover_sync] 为管理员 %s 创建分组 #%s", account.email, group.id)
 
     _sync_members_from_discover(db, group.id, discover_result.members)
@@ -264,7 +267,7 @@ def _sync_member_discover(db: Session, account: Account, discover_result) -> Non
                 group = db.query(Group).filter(Group.id == candidate.family_group_id).first()
                 if group and group.main_account_id == candidate.id:
                     account.family_group_id = group.id
-                    account.updated_at = datetime.now(timezone.utc)
+                    account.updated_at = datetime.now(UTC)
                     logger.info("[discover_sync] 成员 %s 加入管理员 %s 的分组 #%s", account.email, candidate.email, group.id)
                     return
 
@@ -310,11 +313,11 @@ def _clear_pending_flag(db: Session, email: str) -> None:
     account = db.query(Account).filter(Account.email.ilike(email)).first()
     if account and account.is_family_pending:
         account.is_family_pending = False
-        account.updated_at = datetime.now(timezone.utc)
+        account.updated_at = datetime.now(UTC)
 
 
 def _upsert_discovered_member(db: Session, group_id: int, email: str, is_pending: bool) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     account = db.query(Account).filter(Account.email.ilike(email)).first()
     if not account:
         account = Account(email=email, family_group_id=group_id, is_family_pending=is_pending)
@@ -336,10 +339,10 @@ def _upsert_discovered_member(db: Session, group_id: int, email: str, is_pending
 
 
 def clear_account_family_state(account: Account) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if account.family_group_id and not account.is_family_pending:
         account.retired_at = now
-        account.pool_status = "retired"
+        account.status = "retired"
     account.family_group_id = None
     account.is_family_pending = False
     account.subscription_status = ""

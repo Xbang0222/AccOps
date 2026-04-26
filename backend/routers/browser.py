@@ -1,12 +1,12 @@
 """浏览器配置路由 - Profile CRUD + 启动/停止"""
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from deps import verify_token
 from models.database import get_db
-from models.orm import BrowserProfile, Account
+from models.orm import Account, BrowserProfile
 from models.schemas import BrowserProfileCreate, BrowserProfileUpdate
 from services.browser import browser_manager
 

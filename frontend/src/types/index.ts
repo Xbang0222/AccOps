@@ -1,6 +1,6 @@
 /** 数据类型定义 */
 
-import type { PoolStatus } from '@/constants/accountStatus'
+import type { AccountStatus } from '@/constants/accountStatus'
 
 export interface Tag {
   id: number;
@@ -27,9 +27,7 @@ export interface Account {
   validation_url?: string;
   notes?: string;
   retired_at?: string;
-  pool_use_count?: number;
-  pool_status?: PoolStatus;
-  pool_last_used_at?: string;
+  status?: AccountStatus;
   tags?: Tag[];
   created_at?: string;
   updated_at?: string;

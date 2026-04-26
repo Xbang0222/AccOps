@@ -1,13 +1,14 @@
 """账号路由 - 账号 CRUD、标签查询、TOTP、批量导入"""
 import time
+from typing import Literal
+
 import pyotp
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from typing import List, Literal
 
 from core.parsing import parse_int_list
-from deps import verify_token, get_account_service
-from models.schemas import AccountCreate, AccountUpdate, AccountImportRequest
+from deps import get_account_service, verify_token
+from models.schemas import AccountCreate, AccountImportRequest, AccountUpdate
 from services.account import AccountService
 from services.account_import_parser import parse_account_import_line
 
@@ -134,8 +135,8 @@ def import_accounts(
 
 
 class BatchTagsRequest(BaseModel):
-    account_ids: List[int]
-    tag_ids: List[int]
+    account_ids: list[int]
+    tag_ids: list[int]
     mode: Literal["add", "replace", "remove"] = "add"
     replace_from_id: int | None = None
 

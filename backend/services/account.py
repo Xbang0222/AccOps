@@ -1,9 +1,9 @@
 """账号服务 - 处理账号 CRUD"""
 import json
-from datetime import datetime, timezone
-from typing import List, Dict, Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session, selectinload
+
 from models.orm import Account, Tag, account_tags_table
 
 
@@ -13,7 +13,7 @@ class AccountService:
     def __init__(self, db: Session, crypto=None):
         self.db = db
 
-    def _to_dict(self, account: Account, *, _group_cache: dict = None) -> Dict:
+    def _to_dict(self, account: Account, *, _group_cache: dict = None) -> dict:
         """ORM 对象转字典
 
         Args:
@@ -51,9 +51,7 @@ class AccountService:
             "validation_url": self._get_validation_url(account.oauth_credential_json),
             "notes": account.notes or "",
             "retired_at": account.retired_at.isoformat() if account.retired_at else None,
-            "pool_use_count": account.pool_use_count or 0,
-            "pool_status": account.pool_status or "",
-            "pool_last_used_at": account.pool_last_used_at.isoformat() if account.pool_last_used_at else None,
+            "status": account.status or "",
             "tags": [{"id": t.id, "name": t.name} for t in (account.tags or [])],
             "created_at": account.created_at.isoformat() if account.created_at else None,
             "updated_at": account.updated_at.isoformat() if account.updated_at else None,
@@ -76,8 +74,8 @@ class AccountService:
         self, search: str = "",
         page: int = 1, page_size: int = 20, owner_only: bool = False,
         sort_by: str = "created_at", sort_order: str = "desc",
-        tag_ids: Optional[List[int]] = None,
-    ) -> tuple[List[Dict], int]:
+        tag_ids: list[int] | None = None,
+    ) -> tuple[list[dict], int]:
         from models.orm import Group
 
         query = self.db.query(Account)
@@ -127,11 +125,11 @@ class AccountService:
 
         return [self._to_dict(row, _group_cache=group_cache) for row in rows], total
 
-    def get_available(self, search: str = "", limit: int = 200) -> List[Dict]:
+    def get_available(self, search: str = "", limit: int = 200) -> list[dict]:
         """获取可邀请的账号：未在家庭组 + 未废弃/不可用"""
         base_filters = [
             Account.family_group_id.is_(None),
-            (Account.pool_status.is_(None)) | (Account.pool_status == ""),
+            (Account.status.is_(None)) | (Account.status == ""),
         ]
 
         query = self.db.query(Account.id, Account.email).filter(*base_filters)
@@ -140,21 +138,21 @@ class AccountService:
         query = query.order_by(Account.email).limit(limit)
         return [{"id": row.id, "email": row.email} for row in query.all()]
 
-    def get_by_id(self, account_id: int) -> Optional[Dict]:
+    def get_by_id(self, account_id: int) -> dict | None:
         row = self.db.get(Account, account_id)
         return self._to_dict(row) if row else None
 
-    def find_by_email(self, email: str) -> Optional[Dict]:
+    def find_by_email(self, email: str) -> dict | None:
         """通过邮箱查找账号（不区分大小写）"""
         row = self.db.query(Account).filter(Account.email.ilike(email)).first()
         return self._to_dict(row) if row else None
 
     def batch_update_tags(
         self,
-        account_ids: List[int],
-        tag_ids: List[int],
+        account_ids: list[int],
+        tag_ids: list[int],
         mode: str = "add",
-        replace_from_id: Optional[int] = None,
+        replace_from_id: int | None = None,
     ) -> int:
         """批量更新账号标签
 
@@ -190,7 +188,7 @@ class AccountService:
         self.db.commit()
         return count
 
-    def _resolve_tags(self, tag_ids: Optional[List[int]]) -> List[Tag]:
+    def _resolve_tags(self, tag_ids: list[int] | None) -> list[Tag]:
         """根据 tag_ids 列表查出 Tag 对象列表（去重 + 过滤无效 ID）"""
         if not tag_ids:
             return []
@@ -207,7 +205,7 @@ class AccountService:
         totp_secret: str = "",
         family_group_id: int = None,
         notes: str = "",
-        tag_ids: Optional[List[int]] = None,
+        tag_ids: list[int] | None = None,
     ) -> int:
         account = Account(
             email=email,
@@ -233,7 +231,7 @@ class AccountService:
         totp_secret: str = "",
         family_group_id: int = None,
         notes: str = "",
-        tag_ids: Optional[List[int]] = None,
+        tag_ids: list[int] | None = None,
     ):
         account = self.db.get(Account, account_id)
         if not account:
@@ -250,7 +248,7 @@ class AccountService:
         # tag_ids 为 None 时保持不动；为列表（含空列表）时全量替换
         if tag_ids is not None:
             account.tags = self._resolve_tags(tag_ids)
-        account.updated_at = datetime.now(timezone.utc)
+        account.updated_at = datetime.now(UTC)
 
         self.db.commit()
 
@@ -265,8 +263,8 @@ class AccountService:
         account = self.db.get(Account, account_id)
         if not account:
             return False
-        account.pool_status = "unusable"
-        account.updated_at = datetime.now(timezone.utc)
+        account.status = "unusable"
+        account.updated_at = datetime.now(UTC)
         self.db.commit()
         return True
 
@@ -275,7 +273,7 @@ class AccountService:
         account = self.db.get(Account, account_id)
         if not account:
             return False
-        account.pool_status = None
-        account.updated_at = datetime.now(timezone.utc)
+        account.status = None
+        account.updated_at = datetime.now(UTC)
         self.db.commit()
         return True

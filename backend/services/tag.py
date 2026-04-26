@@ -1,6 +1,5 @@
 """标签服务 - 用户自定义标签 CRUD"""
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -16,7 +15,7 @@ class TagService:
         self.db = db
 
     @staticmethod
-    def _to_dict(tag: Tag, accounts_count: int = 0) -> Dict:
+    def _to_dict(tag: Tag, accounts_count: int = 0) -> dict:
         return {
             "id": tag.id,
             "name": tag.name,
@@ -26,7 +25,7 @@ class TagService:
             "updated_at": tag.updated_at.isoformat() if tag.updated_at else None,
         }
 
-    def list_all(self) -> List[Dict]:
+    def list_all(self) -> list[dict]:
         # 一次性算出每个标签关联的账号数（避免 N+1）
         count_rows = (
             self.db.query(
@@ -36,7 +35,7 @@ class TagService:
             .group_by(account_tags_table.c.tag_id)
             .all()
         )
-        count_map: Dict[int, int] = {row.tag_id: row.cnt for row in count_rows}
+        count_map: dict[int, int] = {row.tag_id: row.cnt for row in count_rows}
 
         rows = (
             self.db.query(Tag)
@@ -45,7 +44,7 @@ class TagService:
         )
         return [self._to_dict(t, count_map.get(t.id, 0)) for t in rows]
 
-    def get_by_id(self, tag_id: int) -> Optional[Dict]:
+    def get_by_id(self, tag_id: int) -> dict | None:
         tag = self.db.get(Tag, tag_id)
         return self._to_dict(tag) if tag else None
 
@@ -71,7 +70,7 @@ class TagService:
         if not tag:
             return False
         tag.name = name
-        tag.updated_at = datetime.now(timezone.utc)
+        tag.updated_at = datetime.now(UTC)
         try:
             self.db.commit()
         except IntegrityError:

@@ -1,24 +1,24 @@
 """SQLAlchemy ORM 模型定义"""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     Boolean,
     Column,
-    Integer,
-    String,
-    Text,
     DateTime,
     ForeignKey,
-    Table,
     Index,
+    Integer,
+    String,
+    Table,
+    Text,
 )
-from sqlalchemy.orm import relationship, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, relationship
 
 from core.constants import (
-    DEFAULT_SCREEN_WIDTH,
-    DEFAULT_SCREEN_HEIGHT,
-    DEFAULT_OS_TYPE,
     DEFAULT_LANGUAGE,
+    DEFAULT_OS_TYPE,
+    DEFAULT_SCREEN_HEIGHT,
+    DEFAULT_SCREEN_WIDTH,
     DEFAULT_SMS_COUNTRY,
 )
 
@@ -52,8 +52,8 @@ class Group(Base):
     main_account_id = Column(Integer, ForeignKey("accounts.id", use_alter=True), nullable=True)
     member_count = Column(Integer, default=0)  # 家庭组实际成员数 (含系统外成员)
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # 关系
     accounts = relationship("Account", back_populates="group", foreign_keys="Account.family_group_id")
@@ -69,19 +69,16 @@ class Account(Base):
     recovery_email = Column(Text, default="")
     totp_secret = Column(Text, default="")
     family_group_id = Column(Integer, ForeignKey("family_groups.id", ondelete="SET NULL"), nullable=True)
-    pool_group_id = Column(Integer, ForeignKey("family_groups.id", ondelete="SET NULL"), nullable=True)  # 所属号池（哪个主号的备用号）
     is_family_pending = Column(Boolean, default=False)  # 家庭组邀请待接受
     subscription_status = Column(String, default="")  # 订阅状态: free / ultra
     subscription_expiry = Column(String, default="")  # 订阅到期日, 如 "Mar 23, 2026"
     cookies_json = Column(Text, default="")  # 登录后保存的 cookies (JSON), 用于纯 HTTP 操作
     oauth_credential_json = Column(Text, default="")  # OAuth 认证 JSON (antigravity 格式)
-    retired_at = Column(DateTime, nullable=True)  # 从家庭组退出/移除的时间 (当日可复用，次日起冷却)
-    pool_use_count = Column(Integer, default=0)  # 全局使用次数 (接受邀请成功算一次, 上限2)
-    pool_status = Column(String, default="")  # 号池状态: "" | "retired" | "unusable"
-    pool_last_used_at = Column(DateTime, nullable=True)  # 上次接受邀请的时间 (用于隔天判断)
+    retired_at = Column(DateTime, nullable=True)  # 从家庭组退出/移除的时间
+    status = Column(String, default="")  # 账号状态: "" | "retired" | "unusable"
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # 关系
     group = relationship("Group", back_populates="accounts", foreign_keys=[family_group_id])
@@ -96,8 +93,8 @@ class Tag(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
     sort_order = Column(Integer, default=0, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     accounts = relationship("Account", secondary=account_tags_table, back_populates="tags")
 
@@ -126,8 +123,8 @@ class BrowserProfile(Base):
     webrtc_disabled = Column(Boolean, default=True)
 
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # 关系
     account = relationship("Account", back_populates="browser_profiles")
@@ -145,8 +142,8 @@ class SmsProvider(Base):
     default_service = Column(String, default="go")  # 该提供商的默认服务
     balance = Column(String, default="")  # 缓存余额
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
 
 class SmsActivation(Base):
@@ -168,5 +165,5 @@ class SmsActivation(Base):
     account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)  # 关联的账号
     account_email = Column(String, default="")  # 冗余存储邮箱, 方便查询
     notes = Column(Text, default="")  # 备注
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

@@ -39,7 +39,7 @@ async def _poll_cancel_command(ws: WebSocket, cancel_token: CancellationToken) -
             cancel_token.cancel()
             await ws.send_json({"type": "step", "name": "取消操作", "status": "info", "message": "正在取消..."})
         return True
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return True
     except json.JSONDecodeError:
         return True

@@ -1,5 +1,6 @@
 """认证服务 - 处理密码设置、验证"""
 from sqlalchemy.orm import Session
+
 from models.orm import Config
 from utils.crypto import CryptoManager
 

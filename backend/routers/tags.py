@@ -1,7 +1,7 @@
 """标签路由 - 用户自定义标签 CRUD"""
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from deps import verify_token, get_tag_service
+from deps import get_tag_service, verify_token
 from models.schemas import (
     MessageOut,
     TagCreate,

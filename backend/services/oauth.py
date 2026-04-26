@@ -10,21 +10,17 @@
   7. 生成认证 JSON
 """
 
-import json
 import logging
 import secrets
 import time
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from core.constants import (
-    SEL_PASSWORD_INPUT,
-    SEL_TOTP_INPUT,
-    SEL_PHONE_NUMBER_INPUT,
     SEL_PHONE_CODE_INPUT,
+    SEL_PHONE_NUMBER_INPUT,
     SEL_PHONE_VERIFY_NEXT,
-    SMS_WAIT_TIMEOUT,
     SMS_POLL_INTERVAL,
+    SMS_WAIT_TIMEOUT,
 )
 from services.oauth_support import (
     build_auth_url,
@@ -41,10 +37,10 @@ from services.oauth_support import (
 )
 from services.page_wait import (
     is_refresh_error,
-    safe_navigate,
-    safe_ele,
     safe_click,
+    safe_ele,
     safe_input,
+    safe_navigate,
     safe_url,
     safe_url_for_log,
     wait_page_stable,
@@ -90,7 +86,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
     Returns:
         AutomationResult
     """
-    from services.automation import StepTracker, AutomationResult, CancelledError
+    from services.automation import StepTracker
 
     tracker = StepTracker("oauth", on_step)
 
@@ -262,7 +258,7 @@ def oauth_sync(page, on_step=None, password: str = "", totp_secret: str = "",
             tracker.step("Project ID", "skip", f"获取失败: {e}")
 
         # Step 6: 构建认证 JSON
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         credential = {
             "type": "antigravity",
             "access_token": access_token,
@@ -333,9 +329,9 @@ def auto_phone_verify_sync(page, validation_url: str, on_step=None, cancel_token
     Returns:
         {"success": bool, "message": str}
     """
-    from services.automation import StepTracker
     from models.database import get_db_session
     from models.orm import Config, SmsProvider
+    from services.automation import StepTracker
     from services.sms_api import create_provider
 
     tracker = StepTracker("phone_verify", on_step)

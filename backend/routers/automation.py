@@ -3,38 +3,37 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from core.constants import (
+    ACTION_FAMILY_ACCEPT,
+    ACTION_FAMILY_CREATE,
+    ACTION_FAMILY_LEAVE,
+    ACTION_FAMILY_REMOVE,
+)
 from deps import verify_token
 from models.database import get_db
 from models.orm import Account, BrowserProfile
-from services.browser import browser_manager
 from services.automation import (
+    discover_family_by_cookies,
+    run_accept_family_invite,
     run_auto_login,
     run_create_family_group,
-    run_send_family_invite,
-    run_accept_family_invite,
-    run_remove_family_member,
     run_leave_family_group,
-    discover_family_by_cookies,
+    run_remove_family_member,
+    run_send_family_invite,
 )
 from services.automation_utils import (
     decrypt_field,
+    handle_login_success,
     save_browser_cookies,
     save_subscription_status,
-    handle_login_success,
 )
+from services.browser import browser_manager
 from services.group_sync import sync_group_after_action, sync_group_from_discover
-
-from core.constants import (
-    ACTION_FAMILY_CREATE,
-    ACTION_FAMILY_ACCEPT,
-    ACTION_FAMILY_REMOVE,
-    ACTION_FAMILY_LEAVE,
-)
 
 logger = logging.getLogger(__name__)
 

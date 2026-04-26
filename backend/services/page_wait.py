@@ -14,8 +14,9 @@
 
 import logging
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, Optional, TypeVar
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,8 @@ T = TypeVar("T")
 # DrissionPage 专用异常类型 (直接类型匹配, 比字符串检测更可靠)
 try:
     from DrissionPage.errors import (
-        ElementLostError,
         ContextLostError,
+        ElementLostError,
         PageDisconnectedError,
     )
     _DP_REFRESH_ERRORS = (ElementLostError, ContextLostError, PageDisconnectedError)
@@ -345,7 +346,7 @@ def safe_url_for_log(page, max_len: int = 100) -> str:
         return "<url unavailable>"
 
 
-def retry_on_refresh(func: Optional[Callable[..., T]] = None, *,
+def retry_on_refresh(func: Callable[..., T] | None = None, *,
                      retries: int = DEFAULT_RETRIES,
                      delay: float = DEFAULT_RETRY_DELAY) -> Callable[..., T]:
     """装饰器: 自动重试被页面刷新打断的操作

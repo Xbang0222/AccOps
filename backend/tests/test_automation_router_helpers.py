@@ -13,11 +13,11 @@ from routers.automation_helpers import (
     _create_step_handler,
     _get_task_result,
 )
-from services.automation_utils import (
-    sync_account_state_after_login,
-)
 from routers.automation_ws import (
     automation_websocket,
+)
+from services.automation_utils import (
+    sync_account_state_after_login,
 )
 
 

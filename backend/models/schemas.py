@@ -1,6 +1,6 @@
 """Pydantic 请求/响应模型 (Schemas)"""
+
 from pydantic import BaseModel, Field
-from typing import Optional, List
 
 TAG_NAME_MAX_LENGTH = 32
 
@@ -25,12 +25,12 @@ class TokenResponse(BaseModel):
 
 class AccountBase(BaseModel):
     email: str
-    password: Optional[str] = ""
-    recovery_email: Optional[str] = ""
-    totp_secret: Optional[str] = ""
-    group_id: Optional[int] = None
-    notes: Optional[str] = ""
-    tag_ids: Optional[List[int]] = None
+    password: str | None = ""
+    recovery_email: str | None = ""
+    totp_secret: str | None = ""
+    group_id: int | None = None
+    notes: str | None = ""
+    tag_ids: list[int] | None = None
 
 
 class AccountCreate(AccountBase):
@@ -48,7 +48,7 @@ class AccountImportRequest(BaseModel):
     每行一个账号, 用 ---- 分隔字段
     """
     text: str
-    notes: Optional[str] = ""
+    notes: str | None = ""
 
 
 # ---- 标签 ----
@@ -70,12 +70,12 @@ class TagOut(BaseModel):
     name: str
     sort_order: int = 0
     accounts_count: int = 0
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class TagListOut(BaseModel):
-    tags: List[TagOut]
+    tags: list[TagOut]
 
 
 class TagCreateOut(BaseModel):
@@ -91,33 +91,33 @@ class MessageOut(BaseModel):
 
 class GroupCreate(BaseModel):
     name: str
-    notes: Optional[str] = ""
+    notes: str | None = ""
 
 
 class GroupUpdate(BaseModel):
     name: str
-    main_account_id: Optional[int] = None
-    notes: Optional[str] = ""
+    main_account_id: int | None = None
+    notes: str | None = ""
 
 
 # ---- 浏览器配置 ----
 
 class BrowserProfileBase(BaseModel):
     name: str
-    account_id: Optional[int] = None
-    proxy_type: Optional[str] = ""
-    proxy_host: Optional[str] = ""
-    proxy_port: Optional[int] = None
-    proxy_username: Optional[str] = ""
-    proxy_password: Optional[str] = ""
-    user_agent: Optional[str] = ""
-    os_type: Optional[str] = "macos"
-    timezone: Optional[str] = ""
-    language: Optional[str] = "en-US"
-    screen_width: Optional[int] = 1920
-    screen_height: Optional[int] = 1080
-    webrtc_disabled: Optional[bool] = True
-    notes: Optional[str] = ""
+    account_id: int | None = None
+    proxy_type: str | None = ""
+    proxy_host: str | None = ""
+    proxy_port: int | None = None
+    proxy_username: str | None = ""
+    proxy_password: str | None = ""
+    user_agent: str | None = ""
+    os_type: str | None = "macos"
+    timezone: str | None = ""
+    language: str | None = "en-US"
+    screen_width: int | None = 1920
+    screen_height: int | None = 1080
+    webrtc_disabled: bool | None = True
+    notes: str | None = ""
 
 
 class BrowserProfileCreate(BrowserProfileBase):

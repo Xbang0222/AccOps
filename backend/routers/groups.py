@@ -1,8 +1,7 @@
 """分组路由 - 分组 CRUD、成员管理"""
-from fastapi import APIRouter, HTTPException, Depends, status
-from models.schemas import GroupCreate, GroupUpdate
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from deps import verify_token, get_group_service
+from deps import get_group_service, verify_token
 from models.schemas import GroupCreate, GroupUpdate
 from services.group import GroupService
 

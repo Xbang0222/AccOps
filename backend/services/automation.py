@@ -8,10 +8,8 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
 
-from services.browser import browser_manager, login_sync, get_rapt_sync
-from services.family_api import FamilyAPI, NoInvitationError, TokenError, RPCError
+from core.constants import FAMILY_ROLE_ADMIN
 from services.automation_types import (
     AutomationResult,
     CancellationToken,
@@ -19,7 +17,25 @@ from services.automation_types import (
     FamilyDiscoverResult,
     StepTracker,
 )
-from core.constants import FAMILY_ROLE_ADMIN
+from services.browser import browser_manager, get_rapt_sync, login_sync
+from services.family_api import FamilyAPI, NoInvitationError, RPCError, TokenError
+
+__all__ = [
+    "AutomationResult",
+    "CancellationToken",
+    "CancelledError",
+    "FamilyDiscoverResult",
+    "StepTracker",
+    "discover_family_by_cookies",
+    "run_accept_family_invite",
+    "run_auto_login",
+    "run_create_family_group",
+    "run_leave_family_group",
+    "run_oauth",
+    "run_phone_verify",
+    "run_remove_family_member",
+    "run_send_family_invite",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +392,7 @@ def _auto_login_and_get_cookies(
     password: str,
     totp_secret: str = "",
     recovery_email: str = "",
-) -> Optional[dict]:
+) -> dict | None:
     """自动启动浏览器 → 登录 → 获取 cookies → 关闭浏览器
 
     注意: 强制关闭 headless 模式, 因为 Google 会检测并拦截 headless 登录。
@@ -436,7 +452,7 @@ def _auto_login_and_get_cookies(
         logger.info(f"[auto-login] 登录成功 email={email}")
         cookies = browser_manager.get_cookies(browser_profile_id)
         if not cookies:
-            logger.warning(f"[auto-login] 登录成功但获取 cookies 为空")
+            logger.warning("[auto-login] 登录成功但获取 cookies 为空")
             return None
 
         logger.info(f"[auto-login] 获取到 {len(cookies)} 个 cookies")
@@ -518,7 +534,7 @@ def discover_family_by_cookies(
             # 浏览器里的 cookies 也过期了 → 需要重新登录
             if not result.cookies_expired:
                 return result
-            logger.info(f"[discover] 浏览器 cookies 也已过期, 尝试自动登录")
+            logger.info("[discover] 浏览器 cookies 也已过期, 尝试自动登录")
 
     # 3. 自动登录刷新 cookies (需要账号凭证)
     if browser_profile_id and email and password:

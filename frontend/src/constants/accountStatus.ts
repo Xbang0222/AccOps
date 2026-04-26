@@ -1,7 +1,7 @@
-export const ABNORMAL_POOL_STATUSES = ['unusable', 'retired'] as const
+export const ABNORMAL_STATUSES = ['unusable', 'retired'] as const
 
-export type PoolStatus = '' | 'unusable' | 'retired'
+export type AccountStatus = '' | 'unusable' | 'retired'
 
-export function isAbnormalPoolStatus(status: PoolStatus | undefined | null): boolean {
-  return status ? (ABNORMAL_POOL_STATUSES as readonly string[]).includes(status) : false
+export function isAbnormalStatus(status: AccountStatus | undefined | null): boolean {
+  return status ? (ABNORMAL_STATUSES as readonly string[]).includes(status) : false
 }

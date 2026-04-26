@@ -4,9 +4,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Callable, List
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +84,14 @@ class StepTracker:
     def __init__(self, task_name: str, on_step: Callable = None):
         self.task_name = task_name
         self.on_step = on_step
-        self.steps: List[StepLog] = []
+        self.steps: list[StepLog] = []
         self._step_counter = 0
         self._start_time = time.time()
         self._step_start = 0.0
 
     def step(self, name: str, status: str, message: str = ""):
         self._step_counter += 1
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         duration = int((time.time() - self._step_start) * 1000) if self._step_start else 0
         self._step_start = time.time()
 

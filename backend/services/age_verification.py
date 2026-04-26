@@ -12,13 +12,11 @@
 
 import logging
 import time
-from typing import Optional
 
 from services.page_wait import (
-    safe_navigate,
     safe_ele,
+    safe_navigate,
     safe_url,
-    wait_page_stable,
 )
 
 logger = logging.getLogger(__name__)
@@ -315,9 +313,9 @@ def check_and_verify_age(page, on_step=None) -> dict:
 
     Returns: {"success": bool, "message": str, "status": str}
     """
-    from services.automation import StepTracker
     from models.database import SessionLocal
     from models.orm import Config
+    from services.automation import StepTracker
 
     tracker = StepTracker("age", on_step)
 
