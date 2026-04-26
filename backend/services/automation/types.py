@@ -81,7 +81,7 @@ class AutomationResult:
 class StepTracker:
     """自动化步骤追踪器。"""
 
-    def __init__(self, task_name: str, on_step: Callable = None):
+    def __init__(self, task_name: str, on_step: Callable | None = None):
         self.task_name = task_name
         self.on_step = on_step
         self.steps: list[StepLog] = []
@@ -114,10 +114,10 @@ class StepTracker:
                 data["type"] = "step"
                 data["status"] = "running" if status == "info" else status
                 self.on_step(data)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[%s] on_step callback error: %s", self.task_name, e)
 
-    def result(self, success: bool, message: str, step: str = "done", extra: dict = None) -> AutomationResult:
+    def result(self, success: bool, message: str, step: str = "done", extra: dict | None = None) -> AutomationResult:
         total_ms = int((time.time() - self._start_time) * 1000)
         logger.info("[%s] %s %s (%sms)", self.task_name, "[OK]" if success else "[FAIL]", message, total_ms)
 
@@ -139,8 +139,8 @@ class StepTracker:
                     "step": step,
                     "duration_ms": total_ms,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[%s] on_step result callback error: %s", self.task_name, e)
 
         return result
 

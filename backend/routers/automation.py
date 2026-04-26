@@ -26,7 +26,7 @@ from services.automation import (
     run_remove_family_member,
     run_send_family_invite,
 )
-from services.automation_utils import (
+from services.automation.persistence import (
     decrypt_field,
     handle_login_success,
     save_browser_cookies,

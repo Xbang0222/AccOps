@@ -1,4 +1,6 @@
-"""自动化操作 - 共享工具函数 (从 routers/automation.py 提取)"""
+"""自动化操作的持久化辅助：cookies / OAuth 凭证 / 订阅状态落库。"""
+from __future__ import annotations
+
 import json
 import logging
 from datetime import UTC, datetime
@@ -6,7 +8,7 @@ from datetime import UTC, datetime
 from models.database import get_db_session
 from models.orm import Account, Group
 from services.account import update_account_fields
-from services.automation import discover_family_by_cookies
+from services.automation.core.discover import discover_family_by_cookies
 from services.browser import browser_manager
 
 logger = logging.getLogger(__name__)
@@ -36,7 +38,6 @@ def save_oauth_credential(account_id: int, credential: dict) -> None:
             account = db.query(Account).filter(Account.id == account_id).first()
             if not account:
                 return
-            # 如果凭证中没有 email, 用账号的 email
             if "email" not in credential:
                 credential["email"] = account.email
             account.oauth_credential_json = json.dumps(credential)
@@ -74,8 +75,6 @@ def sync_account_state_after_login(
             logger.warning(f"[login-sync] account #{account_id} 状态同步失败: {result.message}")
             return
 
-        # 仅同步订阅状态，不触发分组同步（避免覆盖用户手动设置的分组关系）
-        # 分组同步应通过用户主动执行 discover 操作触发
         save_subscription_status(account_id, result.subscription_status, result.subscription_expiry)
     except Exception as e:
         logger.warning(f"[login-sync] account #{account_id} 状态同步异常: {e}")

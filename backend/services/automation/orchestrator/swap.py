@@ -1,4 +1,7 @@
-"""自动化操作 - 换号流程 (移除旧子号 → 选取新子号 → 邀请 → 接受 → discover 同步)"""
+"""自动化操作 - 换号流程编排（移除旧子号 → 选取新子号 → 邀请 → 接受 → discover 同步）
+
+100% 业务编排，不含 HTTP 路由。从 routers/automation_swap.py 搬迁。
+"""
 import asyncio
 import json
 import queue
@@ -23,18 +26,18 @@ from routers.automation_helpers import (
     _flush_step_messages,
     _get_task_result,
 )
-from services.automation import (
-    CancellationToken,
-    discover_family_by_cookies,
-    run_auto_login,
-    run_remove_family_member,
-    run_send_family_invite,
-)
-from services.automation_utils import (
+from services.automation.core.discover import discover_family_by_cookies
+from services.automation.persistence import (
     decrypt_field,
     save_browser_cookies,
     save_subscription_status,
 )
+from services.automation.runners import (
+    run_auto_login,
+    run_remove_family_member,
+    run_send_family_invite,
+)
+from services.automation.types import CancellationToken
 from services.browser import browser_manager
 from services.group_sync import sync_group_after_action, sync_group_from_discover
 
@@ -86,7 +89,6 @@ def _swap_batch_load_sub_accounts(emails: list[str]) -> dict[str, dict]:
     with get_db_session() as db:
         subs = db.query(Account).filter(Account.email.in_(emails)).all()
         sub_ids = [sub.id for sub in subs]
-        # 批量加载所有 BrowserProfile，避免 N+1
         profiles = db.query(BrowserProfile).filter(BrowserProfile.account_id.in_(sub_ids)).all() if sub_ids else []
         profile_by_account = {bp.account_id: bp for bp in profiles}
         for sub in subs:
@@ -144,10 +146,7 @@ async def _swap_phase_remove(
     totp_secret: str,
     remove_emails: list[str],
 ) -> int:
-    """阶段1: 逐个移除旧子号，复用 run_remove_family_member 的单账号逻辑。
-
-    返回移除成功数；-1 表示用户取消。
-    """
+    """阶段1: 逐个移除旧子号。返回移除成功数；-1 表示用户取消。"""
     await ws.send_json({"type": "step", "name": PHASE_REMOVE_OLD, "status": "info", "message": f"共 {len(remove_emails)} 个"})
     remove_success = 0
 
@@ -185,6 +184,8 @@ async def _swap_phase_login_and_accept(
     sub_map: dict[str, dict],
 ) -> tuple[int, list[str]]:
     """阶段3.5+4: 登录子号并自动接受邀请。返回 (accept_success, accept_fail)。"""
+    from sqlalchemy import func
+
     from services.family_api import FamilyAPI
 
     # ── 登录子号 ──
@@ -210,7 +211,7 @@ async def _swap_phase_login_and_accept(
                     with FamilyAPI(_c):
                         pass  # constructor refresh_tokens 成功 = cookies 有效
 
-                await asyncio.get_event_loop().run_in_executor(None, _validate_cookies)
+                await asyncio.get_running_loop().run_in_executor(None, _validate_cookies)
                 login_success += 1
                 await ws.send_json({"type": "step", "name": f"验证 {email}", "status": "ok", "message": "cookies 有效"})
                 continue
@@ -221,7 +222,7 @@ async def _swap_phase_login_and_accept(
 
         sub_profile_id = info["profile_id"]
         if not sub_profile_id:
-            sub_profile_id = await asyncio.get_event_loop().run_in_executor(
+            sub_profile_id = await asyncio.get_running_loop().run_in_executor(
                 None, _swap_ensure_sub_profile, email, info["id"],
             )
             if not sub_profile_id:
@@ -243,7 +244,7 @@ async def _swap_phase_login_and_accept(
                         _ = fresh_bp.account
                         return fresh_bp
 
-                fresh_bp = await asyncio.get_event_loop().run_in_executor(None, _launch_sub)
+                fresh_bp = await asyncio.get_running_loop().run_in_executor(None, _launch_sub)
                 await browser_manager.launch(fresh_bp)
         except Exception as exc:
             login_fail.append(f"{email}: 启动浏览器失败 {exc}")
@@ -290,15 +291,15 @@ async def _swap_phase_login_and_accept(
 
         await ws.send_json({"type": "step", "name": f"接受 {email}", "status": "running", "message": f"({i+1}/{len(invite_success)})"})
 
-        # 重新从 DB 读取 cookies（登录阶段可能已更新）
+        # 重新从 DB 读取 cookies
         def _get_cookies(e=email):
             with get_db_session() as db:
-                sub = db.query(Account).filter(Account.email.ilike(e)).first()
+                sub = db.query(Account).filter(func.lower(Account.email) == e.lower()).first()
                 if sub:
                     return sub.cookies_json or "", sub.id
                 return "", None
 
-        cookies_json, sub_account_id = await asyncio.get_event_loop().run_in_executor(None, _get_cookies)
+        cookies_json, sub_account_id = await asyncio.get_running_loop().run_in_executor(None, _get_cookies)
 
         if not cookies_json:
             accept_fail.append(f"{email}: 无 cookies (需先登录)")
@@ -312,7 +313,7 @@ async def _swap_phase_login_and_accept(
                 with FamilyAPI(_c) as api:
                     return api.accept_invite()
 
-            result = await asyncio.get_event_loop().run_in_executor(None, _accept)
+            result = await asyncio.get_running_loop().run_in_executor(None, _accept)
             if result.get("success"):
                 accept_success += 1
                 await ws.send_json({"type": "step", "name": f"接受 {email}", "status": "ok", "message": "已加入"})
@@ -340,14 +341,14 @@ async def _swap_phase_discover_sync(
 
     verified_count = 0
     try:
-        main_info = await asyncio.get_event_loop().run_in_executor(
+        main_info = await asyncio.get_running_loop().run_in_executor(
             None, _swap_load_main_for_discover, account_id,
         )
         if not main_info:
             await ws.send_json({"type": "step", "name": "同步验证", "status": "skip", "message": "主号信息缺失"})
             return 0
 
-        dr = await asyncio.get_event_loop().run_in_executor(
+        dr = await asyncio.get_running_loop().run_in_executor(
             None,
             discover_family_by_cookies,
             account_id,
@@ -393,11 +394,10 @@ async def _handle_family_swap(
 ) -> bool:
     """统一换号：移除旧子号 → 选取/指定新子号 → 邀请 → 自动接受 → discover 同步。"""
 
-    # ── 自动启动浏览器（如果未运行）──
     if not profile_id or not browser_manager.is_running(profile_id):
         await ws.send_json({"type": "step", "name": "启动浏览器", "status": "running", "message": "自动启动主号浏览器..."})
         try:
-            bp = await asyncio.get_event_loop().run_in_executor(
+            bp = await asyncio.get_running_loop().run_in_executor(
                 None, _swap_ensure_browser_profile, account_id,
             )
             profile_id = bp.id
@@ -407,9 +407,8 @@ async def _handle_family_swap(
             await ws.send_json({"type": "result", "success": False, "message": f"启动浏览器失败: {exc}", "duration_ms": 0})
             return True
 
-    # ── 如果 remove_emails 为空，自动查出所有子号（一键换号场景）──
     if not remove_emails:
-        emails, _ = await asyncio.get_event_loop().run_in_executor(
+        emails, _ = await asyncio.get_running_loop().run_in_executor(
             None, _swap_resolve_remove_emails, account_id,
         )
         if not emails:
@@ -426,7 +425,6 @@ async def _handle_family_swap(
             "message": f"将移除 {len(remove_emails)} 个子号: {', '.join(remove_emails)}",
         })
 
-    # ── 阶段1: 批量移除旧子号 ──
     remove_success = 0
     if remove_emails:
         remove_success = await _swap_phase_remove(
@@ -443,7 +441,6 @@ async def _handle_family_swap(
             })
             return True
 
-    # ── 阶段2: 选取新子号 ──
     if specific_emails:
         selected_emails = specific_emails
         actual_count = len(selected_emails)
@@ -454,7 +451,6 @@ async def _handle_family_swap(
 
     await ws.send_json({"type": "step", "name": "选号完成", "status": "ok", "message": f"已选取 {actual_count} 个: {', '.join(selected_emails)}"})
 
-    # ── 阶段3: 批量邀请 ──
     invite_success = []
     invite_fail = []
 
@@ -483,8 +479,7 @@ async def _handle_family_swap(
         await ws.send_json({"type": "result", "success": False, "message": f"邀请全部失败: {'; '.join(invite_fail)}", "duration_ms": 0})
         return True
 
-    # ── 阶段3.5+4: 批量加载子号信息 → 登录 → 接受邀请 ──
-    sub_map = await asyncio.get_event_loop().run_in_executor(
+    sub_map = await asyncio.get_running_loop().run_in_executor(
         None, _swap_batch_load_sub_accounts, invite_success,
     )
 
@@ -492,14 +487,12 @@ async def _handle_family_swap(
         ws, msg_queue, cancel_token, account_id, invite_success, sub_map,
     )
 
-    # ── 阶段5: 完整 discover 同步 ──
     verified_count = await _swap_phase_discover_sync(
         ws, profile_id, account_id, invite_success,
     )
     if verified_count > 0:
         accept_success = verified_count
 
-    # ── 最终报告 ──
     parts = []
     if remove_emails:
         parts.append(f"移除 {remove_success}/{len(remove_emails)}")

@@ -6,7 +6,7 @@ from services.automation import run_phone_verify
 
 class AutomationWrapperTests(unittest.IsolatedAsyncioTestCase):
     async def test_run_phone_verify_returns_browser_not_running_result(self) -> None:
-        with patch("services.automation.browser_manager.get_page", return_value=None):
+        with patch("services.automation.runners.browser_manager.get_page", return_value=None):
             result = await run_phone_verify(1, "https://example.com/verify")
 
         self.assertFalse(result.success)
@@ -15,8 +15,8 @@ class AutomationWrapperTests(unittest.IsolatedAsyncioTestCase):
     async def test_run_phone_verify_wraps_sync_phone_result(self) -> None:
         page = object()
 
-        with patch("services.automation.browser_manager.get_page", return_value=page), patch(
-            "services.automation._run_sync",
+        with patch("services.automation.runners.browser_manager.get_page", return_value=page), patch(
+            "services.automation.runners._run_sync",
             new=AsyncMock(return_value={"success": True, "message": "验证成功", "code": "123456"}),
         ) as run_sync_mock:
             result = await run_phone_verify(3, "https://example.com/verify")

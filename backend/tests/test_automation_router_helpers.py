@@ -16,7 +16,7 @@ from routers.automation_helpers import (
 from routers.automation_ws import (
     automation_websocket,
 )
-from services.automation_utils import (
+from services.automation.persistence import (
     sync_account_state_after_login,
 )
 
@@ -110,10 +110,10 @@ class AutomationRouterHelperTests(unittest.IsolatedAsyncioTestCase):
             },
         )()
 
-        with patch("services.automation_utils.browser_manager.get_cookies", return_value={"SID": "cookie"}), patch(
-            "services.automation_utils.discover_family_by_cookies",
+        with patch("services.automation.persistence.browser_manager.get_cookies", return_value={"SID": "cookie"}), patch(
+            "services.automation.persistence.discover_family_by_cookies",
             return_value=discover_result,
-        ) as discover_mock, patch("services.automation_utils.save_subscription_status") as save_subscription_mock:
+        ) as discover_mock, patch("services.automation.persistence.save_subscription_status") as save_subscription_mock:
             sync_account_state_after_login(
                 account_id=7,
                 profile_id=9,

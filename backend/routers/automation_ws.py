@@ -27,7 +27,6 @@ from routers.automation_helpers import (
     _drain_task_queue,
     _get_task_result,
 )
-from routers.automation_swap import _handle_family_swap
 from services.automation import (
     CancellationToken,
     CancelledError,
@@ -41,7 +40,8 @@ from services.automation import (
     run_remove_family_member,
     run_send_family_invite,
 )
-from services.automation_utils import (
+from services.automation.orchestrator.swap import _handle_family_swap
+from services.automation.persistence import (
     decrypt_field,
     handle_login_success,
     save_browser_cookies,
