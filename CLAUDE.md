@@ -27,7 +27,7 @@ backend/
 │   └── schemas.py              # Pydantic 请求/响应模型
 ├── routers/
 │   ├── auth.py                 # 认证 API (登录/设置密码)
-│   ├── accounts.py             # 账号管理 API (CRUD + 导入 + 标签筛选)
+│   ├── accounts.py             # 账号管理 API (CRUD + 导入 + 标签筛选 + 批量标签)
 │   ├── groups.py               # 家庭组管理 API (CRUD + 成员管理)
 │   ├── tags.py                 # 用户自定义标签 CRUD
 │   ├── dashboard.py            # 仪表盘 API (统计数据)
@@ -37,7 +37,8 @@ backend/
 │   ├── automation_swap.py      # 统一换号操作 (移除→选号→邀请→接受→同步)
 │   ├── automation_helpers.py   # WebSocket 基础设施 (步骤队列/任务轮询)
 │   ├── settings.py             # 系统设置 API (GET/PUT, 存 config 表)
-│   └── sms.py                  # 接码管理 API (提供商 CRUD + 购买/查询/取消)
+│   ├── sms.py                  # 接码管理 API (提供商 CRUD + 购买/查询/取消)
+│   └── cliproxy.py             # CLIProxyAPI 集成 API (上传 OAuth 凭证 + 连接测试)
 ├── core/
 │   ├── constants.py            # 项目常量
 │   └── parsing.py              # 通用入参解析工具 (parse_int_list 等)
@@ -59,6 +60,7 @@ backend/
 │   ├── page_wait.py            # DrissionPage 页面等待与重试工具 (防 "page is refreshed" 异常)
 │   ├── sms_api.py              # 接码平台 API 封装 (HeroSMS / SMS-Bus 多提供商)
 │   ├── tag.py                  # 用户自定义标签 CRUD (含关联账号计数)
+│   ├── cliproxy.py             # CLIProxyAPI 凭证上传服务 (httpx 异步并发)
 │   └── verification.py         # 验证链接提取
 └── utils/
     └── crypto.py               # 加密工具
@@ -75,7 +77,8 @@ frontend/src/
 │   ├── automation.ts           # 自动化 API
 │   ├── settings.ts             # 设置 API
 │   ├── sms.ts                  # 接码管理 API
-│   └── tags.ts                 # 用户标签 CRUD API
+│   ├── tags.ts                 # 用户标签 CRUD API
+│   └── cliproxy.ts             # CLIProxyAPI 集成 API (上传 + 连接测试)
 ├── features/
 │   ├── automation/             # 自动化共享元数据与展示映射
 │   ├── browser/                # 浏览器配置默认值等领域逻辑
@@ -90,7 +93,7 @@ frontend/src/
 │   ├── GroupManagePage.tsx       # 分组管理 (卡片列表)
 │   ├── GroupDetailPage.tsx       # 分组详情 (左侧卡片列表 + 右侧日志面板)
 │   ├── SmsPage.tsx              # 接码管理 (左侧国家列表 + 右侧历史记录)
-│   └── SettingsPage.tsx         # 系统设置 (调试模式 / 无头模式 / 年龄认证 / 默认接码提供商)
+│   └── SettingsPage.tsx         # 系统设置 (调试模式 / 无头模式 / 年龄认证 / 默认接码 / CLIProxyAPI 集成)
 ├── components/
 │   ├── AccountModal.tsx         # 账号编辑弹窗 (含标签多选)
 │   ├── ErrorBoundary.tsx        # 错误边界 (渲染错误优雅降级)
@@ -274,6 +277,36 @@ cookies 过期时的自动恢复机制 (4 级回退):
 - **状态传播**: 主号 Ultra → 自动传播给同组所有子号
 - **状态清理**: 成员被移除/退出/家庭组删除 → 清除订阅状态
 
+### CLIProxyAPI 集成 (services/cliproxy.py)
+
+将分组详情页中已完成 OAuth 验证的子号凭证批量上传到 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 管理接口，免去手动复制下载。
+
+**触发入口**: 分组详情页顶部「全选子号 → 上传到 CLIProxy」按钮（主号自动排除）。
+
+**上传流程**:
+
+1. 读取 `Account.oauth_credential_json`（plain JSON）
+2. 补全 `email` 与 `type: "antigravity"` 字段
+3. `httpx.AsyncClient` 并发 `POST {base_url}/v0/management/auth-files?name={email}.json`
+4. 携带 `Authorization: Bearer {api_key}` 认证
+5. CLIProxyAPI 默认行为是同名覆盖，无需显式去重
+
+**API 端点 (routers/cliproxy.py)**:
+
+| Endpoint                       | 说明                                                                       |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| `POST /api/v1/cliproxy/upload` | 批量上传，body `{ account_ids: [int] }`，返回 `{ total, succeeded, failed, items }` |
+| `GET  /api/v1/cliproxy/status` | 连接测试，返回 `{ configured, reachable, status_code, message }`           |
+
+**配置**: 系统设置页填写 `cliproxy_base_url` + `cliproxy_api_key`，未配置时上传接口返回 400。
+
+**前端**:
+
+- `frontend/src/api/cliproxy.ts` — `uploadToCliproxy` / `getCliproxyStatus`
+- `frontend/src/pages/SettingsPage.tsx` — CLIProxyAPI 集成 Card（Base URL + API Key + 测试连接 + 保存）
+- `frontend/src/features/group-detail/components/GroupAccountCard.tsx` — 卡片左上角 Checkbox（无 OAuth 凭证时禁用）
+- `frontend/src/features/group-detail/useGroupDetailController.ts` — `selectedForUpload` Set state + `handleUploadToCliproxy`
+
 ---
 
 ## Google 家庭组操作研究成果
@@ -313,6 +346,8 @@ cookies 过期时的自动恢复机制 (4 级回退):
 | `headless_mode`           | 无头浏览器模式 (Google 登录不支持，自动登录时强制关闭) |
 | `age_verify_enabled`      | 年龄认证开关: 关闭时 OAuth 跳过年龄认证 (默认关闭)     |
 | `default_sms_provider_id` | 默认接码提供商 ID                                      |
+| `cliproxy_base_url`       | CLIProxyAPI 部署地址 (含 `https://`，不带尾斜杠)       |
+| `cliproxy_api_key`        | CLIProxyAPI Bearer 认证密钥                            |
 
 ---
 
@@ -328,18 +363,37 @@ cookies 过期时的自动恢复机制 (4 级回退):
 
 ### API
 
-| Endpoint                   | 说明                                            |
-| -------------------------- | ----------------------------------------------- |
-| `GET    /api/v1/tags`      | 列出所有标签（含 `accounts_count` 关联账号数）  |
-| `POST   /api/v1/tags`      | 创建标签（name 长度 1-32，唯一）                |
-| `PUT    /api/v1/tags/{id}` | 重命名标签                                      |
-| `DELETE /api/v1/tags/{id}` | 删除标签（关联自动清理，账号本身保留）          |
+| Endpoint                          | 说明                                            |
+| --------------------------------- | ----------------------------------------------- |
+| `GET    /api/v1/tags`             | 列出所有标签（含 `accounts_count` 关联账号数）  |
+| `POST   /api/v1/tags`             | 创建标签（name 长度 1-32，唯一）                |
+| `PUT    /api/v1/tags/{id}`        | 重命名标签                                      |
+| `DELETE /api/v1/tags/{id}`        | 删除标签（关联自动清理，账号本身保留）          |
+| `POST   /api/v1/accounts/batch-tags` | 批量更新账号标签（add / replace / remove 三模式） |
 
 ### 账号端集成
 
 - `GET /api/v1/accounts?tag_ids=1,2,3` — 按标签 OR 筛选（含任一即返回）
 - `POST/PUT /api/v1/accounts` body 含 `tag_ids: [int]` — 全量替换关联；传 `null` 表示不动
 - 响应中每个账号包含 `tags: [{id, name}]`
+
+### 批量标签操作
+
+`POST /api/v1/accounts/batch-tags` body:
+
+```json
+{
+  "account_ids": [1, 2, 3],
+  "tag_ids": [10, 11],
+  "mode": "add",                   // add | replace | remove
+  "replace_from_id": null          // mode=replace 时必填，指定被替换的源标签
+}
+```
+
+- `add` — 在原有标签基础上追加（去重）
+- `replace` — 仅当账号包含 `replace_from_id` 时，移除该标签并追加 `tag_ids`
+- `remove` — 从账号移除 `tag_ids` 中存在的标签
+- 返回 `{ message, count }`，`count` 为实际产生变化的账号数
 
 ### 前端入口
 

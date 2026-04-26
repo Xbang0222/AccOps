@@ -26,6 +26,8 @@
 - 批量导入（支持多种格式，智能识别字段）
 - 服务端排序（按创建时间、邮箱等）
 - 使用状态追踪（`今日可复用` / `已用完`）
+- **用户自定义标签** — 多对多标签体系，按业务维度分类（如 VIP / 待处理）
+- **批量标签操作** — 选中多账号一键追加/替换/移除标签，替换/移除仅显示账号实际持有的标签
 
 ### 分组与号池管理
 - 主号 + 子号分组体系，卡片列表 + 实时日志面板
@@ -52,6 +54,11 @@
 - 多提供商支持（HeroSMS / SMS-Bus）
 - 国家/服务/价格查询
 - 完整购买生命周期管理
+
+### CLIProxyAPI 凭证同步
+- 分组详情页勾选已完成 OAuth 验证的子号，一键批量上传到 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 管理接口
+- 主号自动排除，仅同步子号；冲突策略默认覆盖
+- 系统设置页提供 Base URL / API Key 配置和连接测试
 
 ### 其他
 - **并行操作** — 多个账号可同时执行自动化任务，互不干扰
@@ -149,7 +156,10 @@ cp backend/.env.example backend/.env
 |--------|------|
 | `debug_mode` | 调试模式：详细日志、截图、页面源码 |
 | `headless_mode` | 无头浏览器（自动登录时强制关闭，Google 会拦截） |
+| `age_verify_enabled` | 年龄认证开关（默认关闭） |
 | `default_sms_provider_id` | 默认接码提供商 |
+| `cliproxy_base_url` | CLIProxyAPI 部署地址（含 `https://`，不带尾斜杠） |
+| `cliproxy_api_key` | CLIProxyAPI Bearer 认证密钥 |
 
 ## Architecture
 
@@ -215,14 +225,16 @@ backend/
 │   ├── orm.py                  # ORM 模型 (Account, Group, BrowserProfile...)
 │   └── schemas.py              # Pydantic 请求/响应模型
 ├── routers/
-│   ├── accounts.py             # 账号管理 (CRUD + 排序 + 可用号查询)
-│   ├── groups.py               # 分组管理 (CRUD + 号池管理)
+│   ├── accounts.py             # 账号管理 (CRUD + 排序 + 标签筛选 + 批量标签)
+│   ├── groups.py               # 分组管理 (CRUD)
+│   ├── tags.py                 # 用户自定义标签 CRUD
 │   ├── automation.py           # 自动化 REST API (登录/家庭组操作)
 │   ├── automation_ws.py        # 自动化 WebSocket (实时步骤推送)
 │   ├── automation_swap.py      # 统一换号 (移除→选号→邀请→接受→同步)
 │   ├── automation_helpers.py   # WebSocket 基础设施 (步骤队列/任务轮询)
 │   ├── browser.py              # 浏览器配置 + 缓存管理
 │   ├── sms.py                  # 接码管理
+│   ├── cliproxy.py             # CLIProxyAPI 凭证上传与连接测试
 │   └── settings.py             # 系统设置
 ├── services/
 │   ├── automation.py           # 自动化核心逻辑 (StepTracker + 自动化函数)
@@ -232,6 +244,8 @@ backend/
 │   ├── group_sync.py           # 家庭组与本地分组同步
 │   ├── oauth.py                # OAuth + 手机号验证
 │   ├── age_verification.py     # 年龄认证检测 + 信用卡自动填卡
+│   ├── tag.py                  # 用户标签 CRUD (含关联账号计数)
+│   ├── cliproxy.py             # 批量上传 OAuth 凭证到 CLIProxyAPI 管理接口
 │   └── sms_api.py              # 接码平台 API (HeroSMS / SMS-Bus)
 └── utils/crypto.py             # AES-256-GCM 加密
 
@@ -245,7 +259,8 @@ frontend/src/
 ├── pages/                      # 页面 (账号/分组/接码/设置)
 ├── components/
 │   ├── ErrorBoundary.tsx       # 错误边界 (渲染错误优雅降级)
-│   ├── AccountModal.tsx        # 账号编辑弹窗
+│   ├── AccountModal.tsx        # 账号编辑弹窗 (含标签多选)
+│   ├── TagManageModal.tsx      # 标签管理弹窗 (CRUD + 关联账号计数)
 │   └── ResizableTitle.tsx      # 可拖拽列宽表头
 ├── hooks/
 │   ├── useAutomationWs.ts      # WebSocket 多连接管理
