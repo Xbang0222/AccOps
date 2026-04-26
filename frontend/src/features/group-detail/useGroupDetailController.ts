@@ -495,11 +495,12 @@ export function useGroupDetailController(groupId: number) {
   }, [])
 
   const handleSelectAllUploadable = useCallback(() => {
+    const mainId = group?.main_account_id ?? null
     const ids = (group?.accounts ?? [])
-      .filter((a) => a.has_oauth_credential)
+      .filter((a) => a.has_oauth_credential && a.id !== mainId)
       .map((a) => a.id)
     setSelectedForUpload(new Set(ids))
-  }, [group?.accounts])
+  }, [group?.accounts, group?.main_account_id])
 
   const handleClearUploadSelection = useCallback(() => {
     setSelectedForUpload(new Set())

@@ -16,10 +16,12 @@ const GroupDetailPage: React.FC = () => {
   const groupId = Number(groupIdParam)
   const controller = useGroupDetailController(groupId)
 
-  const uploadableCount = useMemo(
-    () => (controller.group?.accounts ?? []).filter((a) => a.has_oauth_credential).length,
-    [controller.group?.accounts],
-  )
+  const uploadableCount = useMemo(() => {
+    const mainId = controller.group?.main_account_id ?? null
+    return (controller.group?.accounts ?? [])
+      .filter((a) => a.has_oauth_credential && a.id !== mainId)
+      .length
+  }, [controller.group?.accounts, controller.group?.main_account_id])
 
   const modalCapacity = useMemo(
     () => ({
@@ -73,54 +75,76 @@ const GroupDetailPage: React.FC = () => {
           {Math.max((controller.group.accounts ?? []).length - 1, 0)} 个子号
         </Tag>
         {controller.group.notes ? <Text type="secondary" style={{ fontSize: 12 }}>{controller.group.notes}</Text> : null}
+        {uploadableCount > 0 ? (
+          <Tooltip title={controller.selectedForUpload.size >= uploadableCount ? '取消全选' : `全选所有子号 (${uploadableCount})`}>
+            <Checkbox
+              checked={controller.selectedForUpload.size > 0 && controller.selectedForUpload.size >= uploadableCount}
+              indeterminate={controller.selectedForUpload.size > 0 && controller.selectedForUpload.size < uploadableCount}
+              onChange={() => {
+                if (controller.selectedForUpload.size >= uploadableCount) {
+                  controller.handleClearUploadSelection()
+                } else {
+                  controller.handleSelectAllUploadable()
+                }
+              }}
+              style={{ marginLeft: 4 }}
+            />
+          </Tooltip>
+        ) : null}
         <div style={{ flex: 1 }} />
-        <Button
-          size="small"
-          icon={<LoginOutlined />}
-          loading={controller.batchRunning === 'launch'}
-          disabled={controller.batchRunning !== null && controller.batchRunning !== 'launch'}
-          onClick={() => void controller.handleBatchLaunch()}
-        >
-          一键启动
-        </Button>
-        <Button
-          size="small"
-          icon={<UsergroupAddOutlined />}
-          disabled={controller.batchRunning !== null}
-          onClick={controller.handleBatchAccept}
-        >
-          一键接受邀请
-        </Button>
-        <Button
-          size="small"
-          icon={<SafetyCertificateOutlined />}
-          disabled={controller.batchRunning !== null}
-          onClick={controller.handleBatchOAuth}
-        >
-          一键验证
-        </Button>
-        {controller.selectedForUpload.size > 0 ? (
+        <Tooltip title="一键启动所有子号浏览器">
           <Button
             size="small"
-            type="primary"
-            ghost
-            icon={<CloudUploadOutlined />}
+            type="text"
+            icon={<LoginOutlined />}
+            loading={controller.batchRunning === 'launch'}
+            disabled={controller.batchRunning !== null && controller.batchRunning !== 'launch'}
+            onClick={() => void controller.handleBatchLaunch()}
+          />
+        </Tooltip>
+        <Tooltip title="一键接受所有待处理邀请">
+          <Button
+            size="small"
+            type="text"
+            icon={<UsergroupAddOutlined />}
             disabled={controller.batchRunning !== null}
-            loading={controller.uploadingToCliproxy}
-            onClick={() => void controller.handleUploadToCliproxy()}
-          >
-            上传 ({controller.selectedForUpload.size})
-          </Button>
+            onClick={controller.handleBatchAccept}
+          />
+        </Tooltip>
+        <Tooltip title="一键执行 OAuth 验证">
+          <Button
+            size="small"
+            type="text"
+            icon={<SafetyCertificateOutlined />}
+            disabled={controller.batchRunning !== null}
+            onClick={controller.handleBatchOAuth}
+          />
+        </Tooltip>
+        {controller.selectedForUpload.size > 0 ? (
+          <Tooltip title={`上传选中的 ${controller.selectedForUpload.size} 个 OAuth 凭证到 CLIProxy`}>
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              icon={<CloudUploadOutlined />}
+              disabled={controller.batchRunning !== null}
+              loading={controller.uploadingToCliproxy}
+              onClick={() => void controller.handleUploadToCliproxy()}
+            >
+              {controller.selectedForUpload.size}
+            </Button>
+          </Tooltip>
         ) : null}
-        <Button
-          size="small"
-          icon={<PoweroffOutlined />}
-          loading={controller.batchRunning === 'stop'}
-          disabled={controller.batchRunning !== null && controller.batchRunning !== 'stop'}
-          onClick={() => void controller.handleBatchStop()}
-        >
-          一键关闭
-        </Button>
+        <Tooltip title="一键关闭所有子号浏览器">
+          <Button
+            size="small"
+            type="text"
+            icon={<PoweroffOutlined />}
+            loading={controller.batchRunning === 'stop'}
+            disabled={controller.batchRunning !== null && controller.batchRunning !== 'stop'}
+            onClick={() => void controller.handleBatchStop()}
+          />
+        </Tooltip>
         <Tooltip title={controller.masked ? '显示邮箱' : '隐藏邮箱'}>
           <Button
             type="text"
@@ -132,26 +156,6 @@ const GroupDetailPage: React.FC = () => {
 
       <div style={{ flex: 1, display: 'flex', gap: 12, minHeight: 0 }}>
         <div style={{ width: 380, flexShrink: 0, overflowY: 'auto' }}>
-          {uploadableCount > 0 ? (
-            <Flex align="center" gap={6} style={{ padding: '4px 10px', marginBottom: 4 }}>
-              <Checkbox
-                checked={controller.selectedForUpload.size > 0 && controller.selectedForUpload.size >= uploadableCount}
-                indeterminate={controller.selectedForUpload.size > 0 && controller.selectedForUpload.size < uploadableCount}
-                onChange={() => {
-                  if (controller.selectedForUpload.size >= uploadableCount) {
-                    controller.handleClearUploadSelection()
-                  } else {
-                    controller.handleSelectAllUploadable()
-                  }
-                }}
-              />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {controller.selectedForUpload.size > 0
-                  ? `已选 ${controller.selectedForUpload.size}/${uploadableCount}`
-                  : `全选 (${uploadableCount})`}
-              </Text>
-            </Flex>
-          ) : null}
           <Spin spinning={controller.loading}>
             {controller.sortedAccounts.length > 0 ? (
               controller.sortedAccounts.map((account) => (
