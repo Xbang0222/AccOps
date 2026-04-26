@@ -57,7 +57,11 @@ import { useAutomation, useAutomationEvents } from '@/contexts/automationContext
 
 const { Text } = Typography;
 
-const COLUMN_WIDTHS_STORAGE_KEY = 'accops:accounts-column-widths';
+// v2: 重命名 key 强制清掉旧版本残留 (存过被拖宽到异常值的列宽, 视觉上会出现错位的 resize handle / 空白边界)
+const COLUMN_WIDTHS_STORAGE_KEY = 'accops:accounts-column-widths-v2';
+const LEGACY_COLUMN_WIDTHS_KEYS = ['accops:accounts-column-widths'];
+// localStorage 中保存的列宽超过默认值此倍数视为误拖, 回落默认值, 防止视觉异常
+const MAX_COLUMN_WIDTH_FACTOR = 3;
 
 const AccountsPage: React.FC = () => {
   const { message: msg } = App.useApp();
@@ -352,23 +356,34 @@ const AccountsPage: React.FC = () => {
   });
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    // v1 → v2 迁移: 顺手清掉旧 key, 放在 useState 初始化函数内避免模块顶层副作用
+    try {
+      for (const k of LEGACY_COLUMN_WIDTHS_KEYS) localStorage.removeItem(k);
+    } catch { /* ignore */ }
+
+    const defaults: Record<string, number> = {};
+    for (const col of baseColumns) {
+      const key = (col as { key?: string }).key;
+      const width = (col as { width?: number }).width;
+      if (key && width) defaults[key] = width;
+    }
     try {
       const saved = localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (typeof parsed === 'object' && parsed !== null
-          && Object.values(parsed).every((v) => typeof v === 'number' && v > 0)) return parsed;
+        if (typeof parsed === 'object' && parsed !== null) {
+          const merged: Record<string, number> = { ...defaults };
+          for (const [k, v] of Object.entries(parsed)) {
+            if (defaults[k] === undefined) continue; // 丢弃已删除列的旧 key
+            if (typeof v !== 'number' || v <= 0) continue;
+            if (v > defaults[k] * MAX_COLUMN_WIDTH_FACTOR) continue; // 防误拖: 异常宽度回落默认
+            merged[k] = v;
+          }
+          return merged;
+        }
       }
     } catch { /* ignore */ }
-    const widths: Record<string, number> = {};
-    for (const col of baseColumns) {
-      const key = (col as { key?: string }).key;
-      const width = (col as { width?: number }).width;
-      if (key && width) {
-        widths[key] = width;
-      }
-    }
-    return widths;
+    return defaults;
   });
 
   const handleColumnResize = (key: string) =>
@@ -380,10 +395,13 @@ const AccountsPage: React.FC = () => {
       });
     };
 
-  const tableScrollX = useMemo(
-    () => Object.values(columnWidths).reduce((sum, w) => sum + w, 0) + SELECTION_COLUMN_WIDTH,
-    [columnWidths],
+  // baseColumns 每次 render 都重建, useMemo 形同虚设; 直接计算更直白, 开销可忽略
+  const validColumnKeys = new Set(
+    baseColumns.map((c) => (c as { key?: string }).key).filter(Boolean) as string[],
   );
+  const tableScrollX = Object.entries(columnWidths)
+    .filter(([k]) => validColumnKeys.has(k))
+    .reduce((sum, [, w]) => sum + w, 0) + SELECTION_COLUMN_WIDTH;
 
   const columns = baseColumns.map((col) => {
     const key = (col as { key?: string }).key;

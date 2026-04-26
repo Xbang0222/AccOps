@@ -150,3 +150,20 @@ code {
   z-index: 3;
   background: inherit;
 }
+
+/* 没有 fixed 列, 但 antd 在 scroll.x 启用 + 横向有内容溢出时,
+   会给最右一列加 ping-right 的阴影/分隔线 (.ant-table-ping-right ...::after),
+   表现为视野内一条比普通分隔更亮的白色竖线。统一禁用所有 fix-right 装饰, 让所有列视觉一致。 */
+.accounts-table-excel .ant-table-cell-fix-right,
+.accounts-table-excel .ant-table-cell-fix-right-first,
+.accounts-table-excel .ant-table-cell-fix-right-last {
+  position: static !important;
+}
+.accounts-table-excel .ant-table-cell-fix-right::after,
+.accounts-table-excel .ant-table-cell-fix-right-first::after,
+.accounts-table-excel .ant-table-cell-fix-right-last::after,
+.accounts-table-excel .ant-table-ping-right .ant-table-cell-fix-right-first::after,
+.accounts-table-excel .ant-table-ping-right .ant-table-cell-fix-right-last::after {
+  display: none !important;
+  box-shadow: none !important;
+}
