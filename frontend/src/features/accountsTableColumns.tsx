@@ -13,7 +13,6 @@ import {
   LoginOutlined,
   PoweroffOutlined,
   StopOutlined,
-  TeamOutlined,
   UndoOutlined,
   UserOutlined,
 } from '@ant-design/icons'
@@ -84,24 +83,27 @@ export function createAccountTableColumns({
       ),
     },
     {
-      title: '分组',
-      key: 'group',
-      width: 140,
-      render: (_, record) => (
-        <Flex gap={4} align="center" wrap>
-          {record.group_name ? <Tag style={{ margin: 0, fontSize: 11 }}>{record.group_name}</Tag> : null}
-          {record.family_group_id && (record.family_member_count ?? 0) > 0 ? (
-            <Tag color="default" style={{ margin: 0, fontSize: 11 }}>
-              <TeamOutlined style={{ marginRight: 2 }} />{Math.max((record.family_member_count ?? 0) - 1, 0)}/5
-            </Tag>
-          ) : null}
-        </Flex>
-      ),
+      title: '标签',
+      key: 'tags',
+      width: 180,
+      render: (_, record) => {
+        const list = record.tags ?? []
+        if (list.length === 0) {
+          return <Text type="secondary" style={{ fontSize: 12 }}>-</Text>
+        }
+        return (
+          <Flex gap={4} wrap>
+            {list.map((t) => (
+              <Tag key={t.id} style={{ margin: 0, fontSize: 11 }}>{t.name}</Tag>
+            ))}
+          </Flex>
+        )
+      },
     },
     {
-      title: '角色',
+      title: '家庭组',
       key: 'role',
-      width: 80,
+      width: 110,
       render: (_, record) => {
         if (!record.family_group_id) {
           return <Text type="secondary" style={{ fontSize: 12 }}>-</Text>
@@ -109,8 +111,10 @@ export function createAccountTableColumns({
         if (record.is_family_pending) {
           return <Tag color="orange" style={{ margin: 0, fontSize: 11 }}><ClockCircleOutlined style={{ marginRight: 2 }} />待接受</Tag>
         }
+        const memberCount = record.family_member_count ?? 0
+        const memberLabel = memberCount > 0 ? ` ${Math.max(memberCount - 1, 0)}/5` : ''
         if (record.is_family_owner) {
-          return <Tag color="gold" style={{ margin: 0, fontSize: 11 }}><CrownOutlined style={{ marginRight: 2 }} />管理</Tag>
+          return <Tag color="gold" style={{ margin: 0, fontSize: 11 }}><CrownOutlined style={{ marginRight: 2 }} />管理{memberLabel}</Tag>
         }
         return <Tag color="blue" style={{ margin: 0, fontSize: 11 }}><UserOutlined style={{ marginRight: 2 }} />成员</Tag>
       },

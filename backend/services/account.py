@@ -3,8 +3,8 @@ import json
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
-from sqlalchemy.orm import Session
-from models.orm import Account
+from sqlalchemy.orm import Session, selectinload
+from models.orm import Account, Tag, account_tags_table
 
 
 class AccountService:
@@ -41,7 +41,6 @@ class AccountService:
             "password": account.password or "",
             "recovery_email": account.recovery_email or "",
             "totp_secret": account.totp_secret or "",
-            "group_name": account.group_name or "",
             "family_group_id": account.family_group_id,
             "is_family_owner": is_family_owner,
             "is_family_pending": bool(account.is_family_pending),
@@ -55,6 +54,7 @@ class AccountService:
             "pool_use_count": account.pool_use_count or 0,
             "pool_status": account.pool_status or "",
             "pool_last_used_at": account.pool_last_used_at.isoformat() if account.pool_last_used_at else None,
+            "tags": [{"id": t.id, "name": t.name} for t in (account.tags or [])],
             "created_at": account.created_at.isoformat() if account.created_at else None,
             "updated_at": account.updated_at.isoformat() if account.updated_at else None,
         }
@@ -70,12 +70,13 @@ class AccountService:
             return ""
 
     # 允许排序的字段白名单
-    SORTABLE_FIELDS = {"email", "created_at", "updated_at", "group_name"}
+    SORTABLE_FIELDS = {"email", "created_at", "updated_at"}
 
     def get_all(
-        self, search: str = "", group_filter: str = "",
+        self, search: str = "",
         page: int = 1, page_size: int = 20, owner_only: bool = False,
         sort_by: str = "created_at", sort_order: str = "desc",
+        tag_ids: Optional[List[int]] = None,
     ) -> tuple[List[Dict], int]:
         from models.orm import Group
 
@@ -84,8 +85,6 @@ class AccountService:
         if search:
             like = f"%{search}%"
             query = query.filter(Account.email.ilike(like) | Account.notes.ilike(like))
-        if group_filter:
-            query = query.filter(Account.group_name == group_filter)
         if owner_only:
             # 仅显示家庭组创建者 (main_account_id 指向自己的账号)
             query = query.filter(
@@ -93,6 +92,13 @@ class AccountService:
                 Account.id.in_(
                     self.db.query(Group.main_account_id).filter(Group.main_account_id.isnot(None))
                 ),
+            )
+        if tag_ids:
+            # OR 逻辑: 含任一所选标签即可
+            query = (
+                query.join(account_tags_table, Account.id == account_tags_table.c.account_id)
+                .filter(account_tags_table.c.tag_id.in_(tag_ids))
+                .distinct()
             )
 
         # 动态排序（白名单校验防注入）
@@ -105,7 +111,12 @@ class AccountService:
         query = query.order_by(order_clause)
 
         total = query.count()
-        rows = query.offset((page - 1) * page_size).limit(page_size).all()
+        rows = (
+            query.options(selectinload(Account.tags))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
 
         # 一次性查出所有相关 Group，避免 _to_dict 里 N+1 查询
         group_ids = {r.family_group_id for r in rows if r.family_group_id}
@@ -138,25 +149,35 @@ class AccountService:
         row = self.db.query(Account).filter(Account.email.ilike(email)).first()
         return self._to_dict(row) if row else None
 
+    def _resolve_tags(self, tag_ids: Optional[List[int]]) -> List[Tag]:
+        """根据 tag_ids 列表查出 Tag 对象列表（去重 + 过滤无效 ID）"""
+        if not tag_ids:
+            return []
+        unique_ids = list({int(t) for t in tag_ids if t is not None})
+        if not unique_ids:
+            return []
+        return self.db.query(Tag).filter(Tag.id.in_(unique_ids)).all()
+
     def create(
         self,
         email: str,
         password: str = "",
         recovery_email: str = "",
         totp_secret: str = "",
-        group_name: str = "",
         family_group_id: int = None,
         notes: str = "",
+        tag_ids: Optional[List[int]] = None,
     ) -> int:
         account = Account(
             email=email,
             password=password,
             recovery_email=recovery_email,
             totp_secret=totp_secret,
-            group_name=group_name,
             family_group_id=family_group_id,
             notes=notes,
         )
+        if tag_ids is not None:
+            account.tags = self._resolve_tags(tag_ids)
         self.db.add(account)
         self.db.commit()
         self.db.refresh(account)
@@ -169,9 +190,9 @@ class AccountService:
         password: str = "",
         recovery_email: str = "",
         totp_secret: str = "",
-        group_name: str = "",
         family_group_id: int = None,
         notes: str = "",
+        tag_ids: Optional[List[int]] = None,
     ):
         account = self.db.get(Account, account_id)
         if not account:
@@ -181,11 +202,13 @@ class AccountService:
         account.password = password
         account.recovery_email = recovery_email
         account.totp_secret = totp_secret
-        account.group_name = group_name
-        # 仅在显式传入时更新，避免编辑账号时意外清空分组关联
+        # 仅在显式传入时更新，避免编辑账号时意外清空家庭组关联
         if family_group_id is not None:
             account.family_group_id = family_group_id
         account.notes = notes
+        # tag_ids 为 None 时保持不动；为列表（含空列表）时全量替换
+        if tag_ids is not None:
+            account.tags = self._resolve_tags(tag_ids)
         account.updated_at = datetime.now(timezone.utc)
 
         self.db.commit()
@@ -195,16 +218,6 @@ class AccountService:
         if account:
             self.db.delete(account)
             self.db.commit()
-
-    def get_all_groups(self) -> List[str]:
-        rows = (
-            self.db.query(Account.group_name)
-            .filter(Account.group_name != "")
-            .distinct()
-            .order_by(Account.group_name)
-            .all()
-        )
-        return [r[0] for r in rows]
 
     def mark_unusable(self, account_id: int) -> bool:
         """手动标记账号为「无法使用」"""

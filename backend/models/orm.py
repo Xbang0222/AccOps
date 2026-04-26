@@ -9,6 +9,8 @@ from sqlalchemy import (
     Text,
     DateTime,
     ForeignKey,
+    Table,
+    Index,
 )
 from sqlalchemy.orm import relationship, DeclarativeBase
 
@@ -23,6 +25,16 @@ from core.constants import (
 
 class Base(DeclarativeBase):
     pass
+
+
+# 账号 - 标签 多对多关联表
+account_tags_table = Table(
+    "account_tags",
+    Base.metadata,
+    Column("account_id", Integer, ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_account_tags_tag_id", "tag_id"),
+)
 
 
 class Config(Base):
@@ -56,7 +68,6 @@ class Account(Base):
     password = Column(Text, default="")
     recovery_email = Column(Text, default="")
     totp_secret = Column(Text, default="")
-    group_name = Column(String, default="")
     family_group_id = Column(Integer, ForeignKey("family_groups.id", ondelete="SET NULL"), nullable=True)
     pool_group_id = Column(Integer, ForeignKey("family_groups.id", ondelete="SET NULL"), nullable=True)  # 所属号池（哪个主号的备用号）
     is_family_pending = Column(Boolean, default=False)  # 家庭组邀请待接受
@@ -75,6 +86,20 @@ class Account(Base):
     # 关系
     group = relationship("Group", back_populates="accounts", foreign_keys=[family_group_id])
     browser_profiles = relationship("BrowserProfile", back_populates="account", cascade="all, delete-orphan")
+    tags = relationship("Tag", secondary=account_tags_table, back_populates="accounts")
+
+
+class Tag(Base):
+    """用户自定义标签 (账号多对多关联)"""
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, unique=True)
+    sort_order = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    accounts = relationship("Account", secondary=account_tags_table, back_populates="tags")
 
 
 class BrowserProfile(Base):

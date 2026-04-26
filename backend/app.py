@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import config
 from models.database import run_migrations
-from routers import auth, accounts, groups, dashboard, browser, automation, automation_ws, settings, sms
+from routers import auth, accounts, groups, dashboard, browser, automation, automation_ws, settings, sms, tags
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(automation_ws.ws_router, prefix="/api/v1")
     app.include_router(settings.router,   prefix="/api/v1")
     app.include_router(sms.router,        prefix="/api/v1")
+    app.include_router(tags.router,       prefix="/api/v1")
 
     return app
 

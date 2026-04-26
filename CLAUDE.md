@@ -27,8 +27,9 @@ backend/
 │   └── schemas.py              # Pydantic 请求/响应模型
 ├── routers/
 │   ├── auth.py                 # 认证 API (登录/设置密码)
-│   ├── accounts.py             # 账号管理 API (CRUD + 导入)
-│   ├── groups.py               # 分组管理 API (CRUD + 成员管理)
+│   ├── accounts.py             # 账号管理 API (CRUD + 导入 + 标签筛选)
+│   ├── groups.py               # 家庭组管理 API (CRUD + 成员管理)
+│   ├── tags.py                 # 用户自定义标签 CRUD
 │   ├── dashboard.py            # 仪表盘 API (统计数据)
 │   ├── browser.py              # 浏览器配置 API (启动/停止/状态)
 │   ├── automation.py           # 自动化 REST API (登录/家庭组操作)
@@ -37,8 +38,11 @@ backend/
 │   ├── automation_helpers.py   # WebSocket 基础设施 (步骤队列/任务轮询)
 │   ├── settings.py             # 系统设置 API (GET/PUT, 存 config 表)
 │   └── sms.py                  # 接码管理 API (提供商 CRUD + 购买/查询/取消)
+├── core/
+│   ├── constants.py            # 项目常量
+│   └── parsing.py              # 通用入参解析工具 (parse_int_list 等)
 ├── services/
-│   ├── account.py              # 账号 CRUD 服务
+│   ├── account.py              # 账号 CRUD + 标签关联服务
 │   ├── account_import_parser.py # 账号导入解析器
 │   ├── age_verification.py     # 年龄验证服务
 │   ├── auth.py                 # 认证服务 (密码设置/验证)
@@ -48,12 +52,13 @@ backend/
 │   ├── automation_utils.py     # 自动化共享工具 (cookies保存/订阅同步/解密)
 │   ├── browser.py              # DrissionPage 浏览器管理 (登录 + rapt 获取)
 │   ├── family_api.py           # Google Family batchexecute RPC 封装 (纯 httpx)
-│   ├── group.py                # 分组 CRUD + 成员管理服务
+│   ├── group.py                # 家庭组 CRUD + 成员管理服务
 │   ├── group_sync.py           # 家庭组同步 (discover结果→数据库)
 │   ├── oauth.py                # OAuth 自动授权 + API 探测 + 自动手机号验证
 │   ├── oauth_support.py        # OAuth 辅助工具
 │   ├── page_wait.py            # DrissionPage 页面等待与重试工具 (防 "page is refreshed" 异常)
 │   ├── sms_api.py              # 接码平台 API 封装 (HeroSMS / SMS-Bus 多提供商)
+│   ├── tag.py                  # 用户自定义标签 CRUD (含关联账号计数)
 │   └── verification.py         # 验证链接提取
 └── utils/
     └── crypto.py               # 加密工具
@@ -62,14 +67,15 @@ frontend/src/
 ├── api/
 │   ├── client.ts               # Axios 客户端 (baseURL, 拦截器)
 │   ├── index.ts                # 统一导出
-│   ├── accounts.ts             # 账号 API
+│   ├── accounts.ts             # 账号 API (含 tag_ids 筛选)
 │   ├── groups.ts               # 分组 API
 │   ├── auth.ts                 # 认证 API
 │   ├── dashboard.ts            # 仪表盘 API
 │   ├── browser.ts              # 浏览器管理 API
 │   ├── automation.ts           # 自动化 API
 │   ├── settings.ts             # 设置 API
-│   └── sms.ts                  # 接码管理 API
+│   ├── sms.ts                  # 接码管理 API
+│   └── tags.ts                 # 用户标签 CRUD API
 ├── features/
 │   ├── automation/             # 自动化共享元数据与展示映射
 │   ├── browser/                # 浏览器配置默认值等领域逻辑
@@ -86,9 +92,10 @@ frontend/src/
 │   ├── SmsPage.tsx              # 接码管理 (左侧国家列表 + 右侧历史记录)
 │   └── SettingsPage.tsx         # 系统设置 (调试模式 / 无头模式 / 年龄认证 / 默认接码提供商)
 ├── components/
-│   ├── AccountModal.tsx         # 账号编辑弹窗
+│   ├── AccountModal.tsx         # 账号编辑弹窗 (含标签多选)
 │   ├── ErrorBoundary.tsx        # 错误边界 (渲染错误优雅降级)
 │   ├── ResizableTitle.tsx       # 可拖拽列宽表头组件 (react-resizable)
+│   ├── TagManageModal.tsx       # 标签管理弹窗 (创建/重命名/删除 + 关联账号计数)
 │   └── TOTPDisplay.tsx          # TOTP 验证码显示 + 倒计时
 ├── layouts/
 │   └── MainLayout.tsx           # 主布局 (侧边栏 + 内容区 + 主题切换)
@@ -306,6 +313,37 @@ cookies 过期时的自动恢复机制 (4 级回退):
 | `headless_mode`           | 无头浏览器模式 (Google 登录不支持，自动登录时强制关闭) |
 | `age_verify_enabled`      | 年龄认证开关: 关闭时 OAuth 跳过年龄认证 (默认关闭)     |
 | `default_sms_provider_id` | 默认接码提供商 ID                                      |
+
+---
+
+## 账号标签系统
+
+用户自定义的多对多标签，用于按业务维度分类管理账号（如 VIP / 待处理 / 已完成）。**已替代历史版本中的 `group_name` 字段**（已通过迁移 `397999fb03da` 删除）。家庭组（`family_groups`）是 Google 业务概念，与标签无关。
+
+### 数据模型
+
+- `tags` 表：`id` / `name`（唯一，1-32 字符）/ `sort_order` / 时间戳
+- `account_tags` 关联表（多对多）：`(account_id, tag_id)` 复合主键，双向 `ON DELETE CASCADE`
+- 索引：`ix_account_tags_tag_id` 用于按标签反查账号
+
+### API
+
+| Endpoint                   | 说明                                            |
+| -------------------------- | ----------------------------------------------- |
+| `GET    /api/v1/tags`      | 列出所有标签（含 `accounts_count` 关联账号数）  |
+| `POST   /api/v1/tags`      | 创建标签（name 长度 1-32，唯一）                |
+| `PUT    /api/v1/tags/{id}` | 重命名标签                                      |
+| `DELETE /api/v1/tags/{id}` | 删除标签（关联自动清理，账号本身保留）          |
+
+### 账号端集成
+
+- `GET /api/v1/accounts?tag_ids=1,2,3` — 按标签 OR 筛选（含任一即返回）
+- `POST/PUT /api/v1/accounts` body 含 `tag_ids: [int]` — 全量替换关联；传 `null` 表示不动
+- 响应中每个账号包含 `tags: [{id, name}]`
+
+### 前端入口
+
+账号管理页顶部「管理标签」按钮（🏷️ 图标）→ 弹窗增删改；账号编辑弹窗内"标签"字段多选；筛选区"标签"多选 Select 支持 OR 筛选。
 
 ## 开发指引
 

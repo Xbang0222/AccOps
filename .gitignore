@@ -16,6 +16,9 @@ backend/.automation_logs/
 backend/.browser_profiles/
 backend/.venv/
 backend/.env
+backend/.playwright-cli/
+backend/.tags-verify*.png
+backend/.verification_*.png
 
 # Frontend
 frontend/node_modules/

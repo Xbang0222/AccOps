@@ -22,11 +22,12 @@ import {
   EyeInvisibleOutlined,
   ImportOutlined,
   DownloadOutlined,
+  TagsOutlined,
 } from '@ant-design/icons';
 import {
   getAccounts,
   deleteAccount,
-  getGroups,
+  getTags,
   importAccounts,
   getBrowserProfiles,
   createBrowserProfile,
@@ -42,9 +43,10 @@ import {
   updateLoadingAccountSet,
   updateRunningAccountSet,
 } from '@/features/browser/runtime';
-import type { Account } from '@/types';
+import type { Account, Tag } from '@/types';
 import { getErrorMessage } from '@/utils/http';
 import AccountModal from '@/components/AccountModal';
+import TagManageModal from '@/components/TagManageModal';
 import ResizableTitle from '@/components/ResizableTitle';
 import { generateTOTP } from '@/utils/totp';
 import { downloadAccountsTxt } from '@/utils/exportAccount';
@@ -59,8 +61,9 @@ const AccountsPage: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [searchText, setSearchText] = useState('');
-  const [groupFilter, setGroupFilter] = useState<string | undefined>();
-  const [groups, setGroups] = useState<string[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagFilter, setTagFilter] = useState<number[]>([]);
+  const [tagModalVisible, setTagModalVisible] = useState(false);
   const [masked, setMasked] = useState(false);
   const [ownerOnly, setOwnerOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -94,12 +97,12 @@ const AccountsPage: React.FC = () => {
     try {
       const { data } = await getAccounts({
         search: searchText,
-        group: groupFilter,
         page: currentPage,
         pageSize,
         ownerOnly,
         sortBy: sortField,
         sortOrder,
+        tagIds: tagFilter,
       });
       setAccounts(data.accounts);
       setTotal(data.total);
@@ -108,12 +111,12 @@ const AccountsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, groupFilter, msg, ownerOnly, pageSize, searchText, sortField, sortOrder]);
+  }, [currentPage, msg, ownerOnly, pageSize, searchText, sortField, sortOrder, tagFilter]);
 
-  const loadFilters = useCallback(async () => {
+  const loadTags = useCallback(async () => {
     try {
-      const groupsRes = await getGroups();
-      setGroups(groupsRes.data.groups);
+      const { data } = await getTags();
+      setTags(data.tags);
     } catch { /* silent */ }
   }, []);
 
@@ -128,8 +131,8 @@ const AccountsPage: React.FC = () => {
 
   useEffect(() => {
     void loadAccounts();
-    void loadFilters();
-  }, [loadAccounts, loadFilters]);
+    void loadTags();
+  }, [loadAccounts, loadTags]);
 
   useEffect(() => {
     void loadBrowserStatus();
@@ -180,7 +183,7 @@ const AccountsPage: React.FC = () => {
       title: '确认删除', content: '确定要删除这个账号吗？',
       okText: '删除', okType: 'danger', cancelText: '取消',
       onOk: async () => {
-        try { await deleteAccount(id); msg.success('已删除'); loadAccounts(); loadFilters(); }
+        try { await deleteAccount(id); msg.success('已删除'); loadAccounts(); }
         catch { msg.error('删除失败'); }
       },
     });
@@ -274,7 +277,7 @@ const AccountsPage: React.FC = () => {
       else if (data.skipped > 0) msg.warning(data.message);
       else msg.error(data.message);
       if (data.success > 0) {
-        setImportVisible(false); setImportText(''); loadAccounts(); loadFilters();
+        setImportVisible(false); setImportText(''); loadAccounts();
       }
     } catch (error: unknown) {
       msg.error(getErrorMessage(error, '导入失败'));
@@ -348,9 +351,15 @@ const AccountsPage: React.FC = () => {
             allowClear
           />
           <Select
-            placeholder="分组" style={{ width: 140 }}
-            onChange={(v) => { setGroupFilter(v); setCurrentPage(1); }}
-            allowClear options={groups.map((g) => ({ label: g, value: g }))}
+            mode="multiple"
+            placeholder="标签"
+            style={{ minWidth: 180, maxWidth: 360 }}
+            value={tagFilter}
+            onChange={(v) => { setTagFilter(v); setCurrentPage(1); }}
+            allowClear
+            showSearch
+            options={tags.map((t) => ({ label: t.name, value: t.id }))}
+            maxTagCount="responsive"
           />
         </Flex>
         <Flex gap={8} align="center">
@@ -359,6 +368,9 @@ const AccountsPage: React.FC = () => {
           </Tooltip>
           <Tooltip title="批量导入">
             <Button type="text" icon={<ImportOutlined />} onClick={() => setImportVisible(true)} />
+          </Tooltip>
+          <Tooltip title="管理标签">
+            <Button type="text" icon={<TagsOutlined />} onClick={() => setTagModalVisible(true)} />
           </Tooltip>
           <Tooltip title={selectedRowKeys.length === 0 ? '勾选账号后导出' : `导出已选 ${selectedRowKeys.length} 个账号 (.txt)`}>
             <Button
@@ -394,7 +406,7 @@ const AccountsPage: React.FC = () => {
           rowKey="id"
           loading={loading}
           size="small"
-          scroll={{ x: 1100, y: 'calc(100vh - 260px)' }}
+          scroll={{ x: 1280, y: 'calc(100vh - 260px)' }}
           pagination={false}
           onChange={handleTableChange}
           rowSelection={{
@@ -458,8 +470,15 @@ const AccountsPage: React.FC = () => {
       <AccountModal
         visible={modalVisible}
         account={editingAccount}
+        tags={tags}
         onClose={() => setModalVisible(false)}
-        onSuccess={() => { loadAccounts(); loadFilters(); }}
+        onSuccess={() => loadAccounts()}
+      />
+
+      <TagManageModal
+        visible={tagModalVisible}
+        onClose={() => setTagModalVisible(false)}
+        onChange={() => { loadTags(); loadAccounts(); }}
       />
     </div>
   );

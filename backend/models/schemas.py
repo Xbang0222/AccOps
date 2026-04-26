@@ -1,6 +1,8 @@
 """Pydantic 请求/响应模型 (Schemas)"""
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
+
+TAG_NAME_MAX_LENGTH = 32
 
 
 # ---- 认证 ----
@@ -26,9 +28,9 @@ class AccountBase(BaseModel):
     password: Optional[str] = ""
     recovery_email: Optional[str] = ""
     totp_secret: Optional[str] = ""
-    group_name: Optional[str] = ""
     group_id: Optional[int] = None
     notes: Optional[str] = ""
+    tag_ids: Optional[List[int]] = None
 
 
 class AccountCreate(AccountBase):
@@ -46,8 +48,43 @@ class AccountImportRequest(BaseModel):
     每行一个账号, 用 ---- 分隔字段
     """
     text: str
-    group_name: Optional[str] = ""
     notes: Optional[str] = ""
+
+
+# ---- 标签 ----
+
+class TagBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=TAG_NAME_MAX_LENGTH)
+
+
+class TagCreate(TagBase):
+    pass
+
+
+class TagUpdate(TagBase):
+    pass
+
+
+class TagOut(BaseModel):
+    id: int
+    name: str
+    sort_order: int = 0
+    accounts_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class TagListOut(BaseModel):
+    tags: List[TagOut]
+
+
+class TagCreateOut(BaseModel):
+    id: int
+    message: str
+
+
+class MessageOut(BaseModel):
+    message: str
 
 
 # ---- 分组 ----

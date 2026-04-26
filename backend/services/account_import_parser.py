@@ -10,7 +10,6 @@ class ParsedAccountImportLine:
     password: str
     recovery_email: str = ""
     totp_secret: str = ""
-    group_name: str = ""
     notes: str = ""
 
 
@@ -24,7 +23,6 @@ def looks_like_totp_secret(value: str) -> bool:
 def parse_account_import_line(
     line: str,
     *,
-    default_group_name: str = "",
     default_notes: str = "",
 ) -> ParsedAccountImportLine:
     delimiter = "----" if "----" in line else "|"
@@ -68,6 +66,5 @@ def parse_account_import_line(
         password=password,
         recovery_email=recovery_email,
         totp_secret=totp_secret,
-        group_name=default_group_name,
         notes="\n".join(notes_parts),
     )

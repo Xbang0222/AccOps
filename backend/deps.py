@@ -11,6 +11,7 @@ from models.database import get_db
 from services.auth import AuthService
 from services.account import AccountService
 from services.group import GroupService
+from services.tag import TagService
 
 security = HTTPBearer()
 
@@ -41,6 +42,10 @@ def get_group_service(
     account_service: AccountService = Depends(get_account_service),
 ) -> GroupService:
     return GroupService(db, account_service)
+
+
+def get_tag_service(db: Session = Depends(get_db)) -> TagService:
+    return TagService(db)
 
 
 # ---- 认证依赖 ----

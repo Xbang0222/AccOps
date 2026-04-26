@@ -1,8 +1,9 @@
-"""账号路由 - 账号 CRUD、分组/标签查询、TOTP、批量导入"""
+"""账号路由 - 账号 CRUD、标签查询、TOTP、批量导入"""
 import time
 import pyotp
 from fastapi import APIRouter, HTTPException, Depends, status
 
+from core.parsing import parse_int_list
 from deps import verify_token, get_account_service
 from models.schemas import AccountCreate, AccountUpdate, AccountImportRequest
 from services.account import AccountService
@@ -14,25 +15,21 @@ router = APIRouter(prefix="/accounts", tags=["账号"], dependencies=[Depends(ve
 @router.get("")
 def list_accounts(
     search: str = "",
-    group: str = "",
     page: int = 1,
     page_size: int = 20,
     owner_only: bool = False,
     sort_by: str = "created_at",
     sort_order: str = "desc",
+    tag_ids: str = "",
     svc: AccountService = Depends(get_account_service),
 ):
-    """获取账号列表（支持搜索/筛选/分页/排序）"""
+    """获取账号列表（支持搜索/筛选/分页/排序/标签）"""
+    parsed_tag_ids = parse_int_list(tag_ids)
     accounts, total = svc.get_all(
-        search, group, page, page_size, owner_only, sort_by, sort_order,
+        search, page, page_size, owner_only, sort_by, sort_order,
+        tag_ids=parsed_tag_ids or None,
     )
     return {"accounts": accounts, "total": total, "page": page, "page_size": page_size}
-
-
-@router.get("/groups")
-def list_groups(svc: AccountService = Depends(get_account_service)):
-    """获取所有分组"""
-    return {"groups": svc.get_all_groups()}
 
 
 @router.get("/available")
@@ -65,9 +62,9 @@ def create_account(
         password=data.password,
         recovery_email=data.recovery_email,
         totp_secret=data.totp_secret,
-        group_name=data.group_name,
         family_group_id=data.group_id,
         notes=data.notes,
+        tag_ids=data.tag_ids,
     )
     return {"id": account_id, "message": "账号创建成功"}
 
@@ -100,7 +97,6 @@ def import_accounts(
         try:
             parsed = parse_account_import_line(
                 line,
-                default_group_name=data.group_name or "",
                 default_notes=data.notes or "",
             )
         except ValueError as exc:
@@ -121,7 +117,6 @@ def import_accounts(
                 password=parsed.password,
                 recovery_email=parsed.recovery_email,
                 totp_secret=parsed.totp_secret,
-                group_name=parsed.group_name,
                 notes=parsed.notes,
             )
             results["success"] += 1
@@ -149,9 +144,9 @@ def update_account(
         password=data.password,
         recovery_email=data.recovery_email,
         totp_secret=data.totp_secret,
-        group_name=data.group_name,
         family_group_id=data.group_id,
         notes=data.notes,
+        tag_ids=data.tag_ids,
     )
     return {"message": "账号更新成功"}
 

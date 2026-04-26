@@ -7,4 +7,5 @@ export * from './browser';
 export * from './automation';
 export * from './settings';
 export * from './sms';
+export * from './tags';
 export { default as client } from './client';

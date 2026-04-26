@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Divider, Form, Input, Modal, message } from 'antd';
+import { Divider, Form, Input, Modal, Select, message } from 'antd';
 import {
   MailOutlined,
   LockOutlined,
   SafetyOutlined,
-  FolderOutlined,
+  TagsOutlined,
 } from '@ant-design/icons';
 import {
   createAccount,
   updateAccount,
 } from '@/api';
-import type { Account } from '@/types';
+import type { Account, AccountInput, Tag } from '@/types';
 import { getErrorMessage } from '@/utils/http';
 
 const { TextArea } = Input;
@@ -18,6 +18,7 @@ const { TextArea } = Input;
 interface AccountModalProps {
   visible: boolean;
   account: Account | null;
+  tags?: Tag[];
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -25,6 +26,7 @@ interface AccountModalProps {
 const AccountModal: React.FC<AccountModalProps> = ({
   visible,
   account,
+  tags = [],
   onClose,
   onSuccess,
 }) => {
@@ -34,7 +36,10 @@ const AccountModal: React.FC<AccountModalProps> = ({
   useEffect(() => {
     if (visible) {
       if (account) {
-        form.setFieldsValue(account);
+        form.setFieldsValue({
+          ...account,
+          tag_ids: account.tags?.map((t) => t.id) ?? [],
+        });
       } else {
         form.resetFields();
       }
@@ -46,10 +51,17 @@ const AccountModal: React.FC<AccountModalProps> = ({
       const values = await form.validateFields();
       setLoading(true);
 
-      const submitValues = { ...values };
+      const submitValues: AccountInput = {
+        email: values.email,
+        password: values.password ?? '',
+        recovery_email: values.recovery_email ?? '',
+        totp_secret: values.totp_secret ?? '',
+        notes: values.notes ?? '',
+        tag_ids: values.tag_ids ?? [],
+      };
 
       if (account) {
-        // 保留原有的 family_group_id，避免编辑账号时把分组关联清掉
+        // 保留原有的 family_group_id，避免编辑账号时把家庭组关联清掉
         submitValues.group_id = account.family_group_id ?? null;
         await updateAccount(account.id, submitValues);
         message.success('账号更新成功');
@@ -77,7 +89,7 @@ const AccountModal: React.FC<AccountModalProps> = ({
       width={520}
       okText="保存"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         form={form}
@@ -122,10 +134,15 @@ const AccountModal: React.FC<AccountModalProps> = ({
 
         <Divider style={{ margin: '8px 0 16px' }} />
 
-        <Form.Item name="group_name" label="分组">
-          <Input
-            prefix={<FolderOutlined style={{ color: '#bfbfbf' }} />}
-            placeholder="如: 工作、个人"
+        <Form.Item name="tag_ids" label="标签">
+          <Select
+            mode="multiple"
+            placeholder={tags.length === 0 ? '尚未创建标签，请先在账号页点「管理标签」添加' : '选择标签'}
+            allowClear
+            showSearch
+            suffixIcon={<TagsOutlined style={{ color: '#bfbfbf' }} />}
+            options={tags.map((t) => ({ label: t.name, value: t.id }))}
+            disabled={tags.length === 0}
           />
         </Form.Item>
 

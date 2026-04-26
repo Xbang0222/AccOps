@@ -2,14 +2,21 @@
 
 import type { PoolStatus } from '@/constants/accountStatus'
 
+export interface Tag {
+  id: number;
+  name: string;
+  sort_order?: number;
+  accounts_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Account {
   id: number;
   email: string;
   password: string;
   recovery_email?: string;
   totp_secret?: string;
-  group_name?: string;
-  group_id?: number;
   family_group_id?: number;
   is_family_owner?: boolean;
   is_family_pending?: boolean;
@@ -23,8 +30,20 @@ export interface Account {
   pool_use_count?: number;
   pool_status?: PoolStatus;
   pool_last_used_at?: string;
+  tags?: Tag[];
   created_at?: string;
   updated_at?: string;
+}
+
+/** 账号创建/更新请求体 (与响应 Account 区分开) */
+export interface AccountInput {
+  email: string;
+  password?: string;
+  recovery_email?: string;
+  totp_secret?: string;
+  group_id?: number | null;
+  notes?: string;
+  tag_ids?: number[];
 }
 
 export interface Group {

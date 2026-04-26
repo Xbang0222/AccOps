@@ -7,7 +7,6 @@ class ParseAccountImportLineTests(unittest.TestCase):
     def test_parse_line_with_totp_link_and_extra_notes(self) -> None:
         result = parse_account_import_line(
             "foo@gmail.com----password----recover@gmail.com----JBSWY3DPEHPK3PXP----https://example.com/verify----美国",
-            default_group_name="group-a",
             default_notes="base",
         )
 
@@ -15,7 +14,6 @@ class ParseAccountImportLineTests(unittest.TestCase):
         self.assertEqual(result.password, "password")
         self.assertEqual(result.recovery_email, "recover@gmail.com")
         self.assertEqual(result.totp_secret, "JBSWY3DPEHPK3PXP")
-        self.assertEqual(result.group_name, "group-a")
         self.assertIn("验证链接: https://example.com/verify", result.notes)
         self.assertIn("base", result.notes)
         self.assertTrue(result.notes.endswith("美国"))

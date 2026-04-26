@@ -369,7 +369,7 @@ const GroupManagePage: React.FC = () => {
                 showSearch
                 optionFilterProp="label"
                 options={accounts
-                  .filter((acc) => !acc.group_id)
+                  .filter((acc) => !acc.family_group_id)
                   .map((acc) => ({ label: acc.email, value: acc.id }))}
               />
             </Form.Item>
