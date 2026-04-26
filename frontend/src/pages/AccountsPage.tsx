@@ -10,6 +10,7 @@ import {
   Flex,
   App,
   Typography,
+  Radio,
 } from 'antd';
 import type { TablePaginationConfig } from 'antd';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
@@ -23,6 +24,7 @@ import {
   ImportOutlined,
   DownloadOutlined,
   TagsOutlined,
+  TagOutlined,
 } from '@ant-design/icons';
 import {
   getAccounts,
@@ -35,6 +37,7 @@ import {
   stopBrowser,
   markAccountUnusable,
   clearAccountStatus,
+  batchUpdateTags,
 } from '@/api';
 import { createAccountTableColumns, SELECTION_COLUMN_WIDTH } from '@/features/accountsTableColumns';
 import { createDefaultBrowserProfile } from '@/features/browser/browserProfileDefaults';
@@ -86,6 +89,13 @@ const AccountsPage: React.FC = () => {
 
   // 批量导出
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
+  // 批量标签
+  const [batchTagVisible, setBatchTagVisible] = useState(false);
+  const [batchTagIds, setBatchTagIds] = useState<number[]>([]);
+  const [batchTagMode, setBatchTagMode] = useState<'add' | 'replace' | 'remove'>('add');
+  const [batchTagFromId, setBatchTagFromId] = useState<number | undefined>(undefined);
+  const [batchTagLoading, setBatchTagLoading] = useState(false);
 
   const { execute: executeAutomation } = useAutomation();
   useAutomationEvents({
@@ -241,6 +251,19 @@ const AccountsPage: React.FC = () => {
     msg.success('已导出 1 个账号');
   };
 
+  const selectedAccountTags = useMemo(() => {
+    const idSet = new Set<number>(selectedRowKeys.map(Number));
+    const tagMap = new Map<number, Tag>();
+    for (const a of accounts) {
+      if (idSet.has(a.id)) {
+        for (const t of a.tags ?? []) {
+          tagMap.set(t.id, t);
+        }
+      }
+    }
+    return Array.from(tagMap.values());
+  }, [accounts, selectedRowKeys]);
+
   const handleExportSelected = () => {
     const idSet = new Set<number>(selectedRowKeys.map(Number));
     const selected = accounts.filter((a) => idSet.has(a.id));
@@ -250,6 +273,32 @@ const AccountsPage: React.FC = () => {
     }
     downloadAccountsTxt(selected);
     msg.success(`已导出 ${selected.length} 个账号`);
+  };
+
+  const handleBatchTagSubmit = async () => {
+    if (batchTagIds.length === 0) {
+      msg.warning('请选择标签');
+      return;
+    }
+    if (batchTagMode === 'replace' && !batchTagFromId) {
+      msg.warning('请选择要替换的原标签');
+      return;
+    }
+    const ids = selectedRowKeys.map(Number);
+    if (ids.length === 0) return;
+    setBatchTagLoading(true);
+    try {
+      const { data } = await batchUpdateTags(ids, batchTagIds, batchTagMode, batchTagFromId);
+      msg.success(data.message);
+      setBatchTagVisible(false);
+      setBatchTagIds([]);
+      setBatchTagFromId(undefined);
+      void loadAccounts();
+    } catch (error: unknown) {
+      msg.error(getErrorMessage(error, '操作失败'));
+    } finally {
+      setBatchTagLoading(false);
+    }
   };
 
   const handleTableChange = (
@@ -402,6 +451,17 @@ const AccountsPage: React.FC = () => {
               {selectedRowKeys.length > 0 ? `导出 ${selectedRowKeys.length}` : null}
             </Button>
           </Tooltip>
+          <Tooltip title={selectedRowKeys.length === 0 ? '勾选账号后打标签' : `为已选 ${selectedRowKeys.length} 个账号打标签`}>
+            <Button
+              type={selectedRowKeys.length > 0 ? 'primary' : 'text'}
+              ghost={selectedRowKeys.length > 0}
+              icon={<TagOutlined />}
+              disabled={selectedRowKeys.length === 0}
+              onClick={() => { setBatchTagIds([]); setBatchTagFromId(undefined); setBatchTagMode('add'); setBatchTagVisible(true); }}
+            >
+              {selectedRowKeys.length > 0 ? `标签 ${selectedRowKeys.length}` : null}
+            </Button>
+          </Tooltip>
           <Tooltip title={ownerOnly ? '显示全部账号' : '仅显示创建者'}>
             <Button
               type={ownerOnly ? 'primary' : 'text'}
@@ -500,6 +560,76 @@ const AccountsPage: React.FC = () => {
         onClose={() => setTagModalVisible(false)}
         onChange={() => { loadTags(); loadAccounts(); }}
       />
+
+      <Modal
+        title={`批量标签 (${selectedRowKeys.length} 个账号)`}
+        open={batchTagVisible}
+        onCancel={() => setBatchTagVisible(false)}
+        onOk={handleBatchTagSubmit}
+        confirmLoading={batchTagLoading}
+        okText="确认"
+        destroyOnClose
+      >
+        <Flex vertical gap={16} style={{ marginTop: 16 }}>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>操作方式</Text>
+            <Radio.Group value={batchTagMode} onChange={(e) => { setBatchTagMode(e.target.value); setBatchTagIds([]); setBatchTagFromId(undefined); }}>
+              <Radio.Button value="add">追加</Radio.Button>
+              <Radio.Button value="replace">替换</Radio.Button>
+              <Radio.Button value="remove">移除</Radio.Button>
+            </Radio.Group>
+          </div>
+          {batchTagMode === 'replace' ? (
+            <>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>原标签（从哪个标签替换）</Text>
+                <Select
+                  placeholder="选择要替换掉的标签"
+                  style={{ width: '100%' }}
+                  value={batchTagFromId}
+                  onChange={setBatchTagFromId}
+                  options={selectedAccountTags.map((t) => ({ label: t.name, value: t.id }))}
+                />
+              </div>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>新标签（替换为）</Text>
+                <Select
+                  mode="multiple"
+                  placeholder="选择新标签"
+                  style={{ width: '100%' }}
+                  value={batchTagIds}
+                  onChange={setBatchTagIds}
+                  options={tags.filter((t) => t.id !== batchTagFromId).map((t) => ({ label: t.name, value: t.id }))}
+                />
+              </div>
+            </>
+          ) : batchTagMode === 'remove' ? (
+            <div>
+              <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>选择要移除的标签</Text>
+              <Select
+                mode="multiple"
+                placeholder="选择标签"
+                style={{ width: '100%' }}
+                value={batchTagIds}
+                onChange={setBatchTagIds}
+                options={selectedAccountTags.map((t) => ({ label: t.name, value: t.id }))}
+              />
+            </div>
+          ) : (
+            <div>
+              <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>选择要添加的标签</Text>
+              <Select
+                mode="multiple"
+                placeholder="选择标签"
+                style={{ width: '100%' }}
+                value={batchTagIds}
+                onChange={setBatchTagIds}
+                options={tags.map((t) => ({ label: t.name, value: t.id }))}
+              />
+            </div>
+          )}
+        </Flex>
+      </Modal>
     </div>
   );
 };

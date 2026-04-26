@@ -2,6 +2,8 @@
 import time
 import pyotp
 from fastapi import APIRouter, HTTPException, Depends, status
+from pydantic import BaseModel
+from typing import List, Literal
 
 from core.parsing import parse_int_list
 from deps import verify_token, get_account_service
@@ -129,6 +131,30 @@ def import_accounts(
         "message": f"导入完成: 成功 {results['success']}, 跳过 {results['skipped']}, 失败 {results['failed']}",
         **results,
     }
+
+
+class BatchTagsRequest(BaseModel):
+    account_ids: List[int]
+    tag_ids: List[int]
+    mode: Literal["add", "replace", "remove"] = "add"
+    replace_from_id: int | None = None
+
+
+@router.post("/batch-tags")
+def batch_update_tags(
+    data: BatchTagsRequest,
+    svc: AccountService = Depends(get_account_service),
+):
+    """批量更新账号标签（add=追加 / replace=A→B替换 / remove=移除）"""
+    if not data.account_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="account_ids 不能为空")
+    if not data.tag_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tag_ids 不能为空")
+    if data.mode == "replace" and not data.replace_from_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="替换模式需要指定原标签")
+    count = svc.batch_update_tags(data.account_ids, data.tag_ids, data.mode, data.replace_from_id)
+    labels = {"add": "添加", "replace": "替换", "remove": "移除"}
+    return {"message": f"已{labels[data.mode]}标签，影响 {count} 个账号", "count": count}
 
 
 @router.put("/{account_id}")

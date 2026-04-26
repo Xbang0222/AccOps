@@ -71,3 +71,16 @@ export const markAccountUnusable = (id: number) =>
 
 export const clearAccountStatus = (id: number) =>
   client.post<{ message: string }>(`${API_PREFIX}/accounts/${id}/clear-status`);
+
+export const batchUpdateTags = (
+  accountIds: number[],
+  tagIds: number[],
+  mode: 'add' | 'replace' | 'remove' = 'add',
+  replaceFromId?: number,
+) =>
+  client.post<{ message: string; count: number }>(`${API_PREFIX}/accounts/batch-tags`, {
+    account_ids: accountIds,
+    tag_ids: tagIds,
+    mode,
+    replace_from_id: replaceFromId,
+  });

@@ -149,6 +149,47 @@ class AccountService:
         row = self.db.query(Account).filter(Account.email.ilike(email)).first()
         return self._to_dict(row) if row else None
 
+    def batch_update_tags(
+        self,
+        account_ids: List[int],
+        tag_ids: List[int],
+        mode: str = "add",
+        replace_from_id: Optional[int] = None,
+    ) -> int:
+        """批量更新账号标签
+
+        mode:
+          - add: 追加标签
+          - replace: 将 replace_from_id 标签替换为 tag_ids 中的标签
+          - remove: 移除指定标签
+        """
+        accounts = self.db.query(Account).filter(Account.id.in_(account_ids)).all()
+        if not accounts:
+            return 0
+        tags = self._resolve_tags(tag_ids)
+        tag_set = set(t.id for t in tags)
+        count = 0
+        for account in accounts:
+            if mode == "replace":
+                if replace_from_id and any(t.id == replace_from_id for t in account.tags):
+                    remaining = [t for t in account.tags if t.id != replace_from_id]
+                    existing_ids = {t.id for t in remaining}
+                    account.tags = remaining + [t for t in tags if t.id not in existing_ids]
+                    count += 1
+            elif mode == "remove":
+                before = len(account.tags)
+                account.tags = [t for t in account.tags if t.id not in tag_set]
+                if len(account.tags) != before:
+                    count += 1
+            else:
+                existing_ids = {t.id for t in account.tags}
+                new_tags = [t for t in tags if t.id not in existing_ids]
+                if new_tags:
+                    account.tags = list(account.tags) + new_tags
+                    count += 1
+        self.db.commit()
+        return count
+
     def _resolve_tags(self, tag_ids: Optional[List[int]]) -> List[Tag]:
         """根据 tag_ids 列表查出 Tag 对象列表（去重 + 过滤无效 ID）"""
         if not tag_ids:
