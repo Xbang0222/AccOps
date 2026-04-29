@@ -18,12 +18,15 @@ const SmsPage: React.FC = () => {
     <div style={{ display: 'flex', height: '100%', gap: 12 }}>
       <SmsCountryList
         activeProviderApiKey={controller.activeProvider?.api_key}
-        buyLoading={controller.buyLoading}
+        atConcurrentCap={controller.atConcurrentCap}
+        balance={controller.activeProvider?.balance}
+        concurrentCount={controller.concurrentCount}
         countries={controller.sortedCountries}
         countryLoading={controller.countryLoading}
         countrySearch={controller.countrySearch}
         countrySortBy={controller.countrySortBy}
         defaultService={controller.defaultService}
+        isBuyLoading={controller.isBuyLoading}
         onBuyNumber={controller.handleBuyNumber}
         onChangeSearch={controller.setCountrySearch}
         onChangeSortBy={controller.setCountrySortBy}
@@ -31,15 +34,29 @@ const SmsPage: React.FC = () => {
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%' }}>
-        {controller.activeActivation ? (
-          <SmsActivationCard
-            activation={controller.activeActivation}
-            polling={controller.polling}
-            onCancel={controller.handleCancel}
-            onClear={() => controller.setActiveActivation(null)}
-            onCopy={controller.copyText}
-            onFinish={controller.handleFinish}
-          />
+        {controller.activeActivationList.length > 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 0,
+              maxHeight: '50%',
+              overflowY: 'auto',
+              flexShrink: 0,
+            }}
+          >
+            {controller.activeActivationList.map((activation) => (
+              <SmsActivationCard
+                key={activation.activation_id}
+                activation={activation}
+                polling={controller.isPolling(activation.activation_id)}
+                onCancel={() => controller.handleCancel(activation.activation_id)}
+                onClear={() => controller.handleClear(activation.activation_id)}
+                onCopy={controller.copyText}
+                onFinish={() => controller.handleFinish(activation.activation_id)}
+              />
+            ))}
+          </div>
         ) : null}
 
         <SmsHistoryCard
