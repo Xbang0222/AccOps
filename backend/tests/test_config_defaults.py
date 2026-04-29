@@ -23,8 +23,8 @@ class ConfigDefaultsTests(unittest.TestCase):
         try:
             origins = importlib.reload(config).CORS_ORIGINS
 
-            self.assertIn("http://localhost:5173", origins)
-            self.assertIn("http://127.0.0.1:5173", origins)
+            self.assertIn("http://localhost:17894", origins)
+            self.assertIn("http://127.0.0.1:17894", origins)
         finally:
             if original is not None:
                 os.environ["GAM_CORS_ORIGINS"] = original

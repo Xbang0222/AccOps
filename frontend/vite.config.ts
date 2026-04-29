@@ -16,12 +16,15 @@ function getPackageName(id: string) {
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '')
-  const proxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8000'
+  const proxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:17893'
+  const devPort = Number(env.VITE_DEV_PORT) || 17894
 
   return {
     plugins: [react()],
     server: {
       host: '0.0.0.0',
+      port: devPort,
+      strictPort: true,
       proxy: {
         '/api': {
           target: proxyTarget,
