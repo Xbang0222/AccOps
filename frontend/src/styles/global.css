@@ -143,12 +143,18 @@ code {
 }
 
 /* thead 粘在外层滚动容器（wrapper）的视口顶部，纵向滚动时表头始终可见。
-   z-index 3 高于 fixed-right 列默认值，确保表头跨过固定列时层级正确。 */
+   z-index 3 高于 fixed-right 列默认值，确保表头跨过固定列时层级正确。
+   背景色显式声明（不能用 inherit，否则从透明的 <tr> 继承导致表头穿透），
+   值与 theme/index.ts 中 Table.headerBg 保持一致。 */
 .accounts-table-excel .ant-table-thead > tr > th {
   position: sticky;
   top: 0;
   z-index: 3;
-  background: inherit;
+  background: #fafbfc;
+}
+
+[data-theme='dark'] .accounts-table-excel .ant-table-thead > tr > th {
+  background: #1f1f1f;
 }
 
 /* 没有 fixed 列, 但 antd 在 scroll.x 启用 + 横向有内容溢出时,
