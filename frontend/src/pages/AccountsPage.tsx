@@ -93,6 +93,8 @@ const AccountsPage: React.FC = () => {
 
   // 批量导出
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  // 跨页保留选中账号的完整信息（解决后端分页导致 accounts 只含当前页的问题）
+  const [selectedAccountsMap, setSelectedAccountsMap] = useState<Map<number, Account>>(() => new Map());
 
   // 批量标签
   const [batchTagVisible, setBatchTagVisible] = useState(false);
@@ -154,6 +156,24 @@ const AccountsPage: React.FC = () => {
     void loadBrowserStatus();
   }, [loadBrowserStatus]);
 
+  // accounts 重新加载后，用最新版本覆盖 map 中命中的条目（保证导出的是最新密码/TOTP/标签）
+  useEffect(() => {
+    if (selectedRowKeys.length === 0) return;
+    setSelectedAccountsMap((prev) => {
+      if (prev.size === 0) return prev;
+      const keysSet = new Set(selectedRowKeys.map(Number));
+      let changed = false;
+      const next = new Map(prev);
+      for (const a of accounts) {
+        if (keysSet.has(a.id) && next.get(a.id) !== a) {
+          next.set(a.id, a);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [accounts, selectedRowKeys]);
+
   const handleLaunchAndLogin = async (record: Account) => {
     const accountId = record.id;
     setBrowserLoading((prev) => updateLoadingAccountSet(prev, accountId, true));
@@ -199,8 +219,18 @@ const AccountsPage: React.FC = () => {
       title: '确认删除', content: '确定要删除这个账号吗？',
       okText: '删除', okType: 'danger', cancelText: '取消',
       onOk: async () => {
-        try { await deleteAccount(id); msg.success('已删除'); void loadAccounts(); }
-        catch { msg.error('删除失败'); }
+        try {
+          await deleteAccount(id);
+          msg.success('已删除');
+          setSelectedRowKeys((prev) => prev.filter((k) => Number(k) !== id));
+          setSelectedAccountsMap((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+          });
+          void loadAccounts();
+        } catch { msg.error('删除失败'); }
       },
     });
   };
@@ -256,27 +286,34 @@ const AccountsPage: React.FC = () => {
   };
 
   const selectedAccountTags = useMemo(() => {
-    const idSet = new Set<number>(selectedRowKeys.map(Number));
     const tagMap = new Map<number, Tag>();
-    for (const a of accounts) {
-      if (idSet.has(a.id)) {
-        for (const t of a.tags ?? []) {
-          tagMap.set(t.id, t);
-        }
+    for (const key of selectedRowKeys) {
+      const acc = selectedAccountsMap.get(Number(key));
+      if (!acc) continue;
+      for (const t of acc.tags ?? []) {
+        tagMap.set(t.id, t);
       }
     }
     return Array.from(tagMap.values());
-  }, [accounts, selectedRowKeys]);
+  }, [selectedAccountsMap, selectedRowKeys]);
 
   const handleExportSelected = () => {
-    const idSet = new Set<number>(selectedRowKeys.map(Number));
-    const selected = accounts.filter((a) => idSet.has(a.id));
+    const selected: Account[] = [];
+    for (const key of selectedRowKeys) {
+      const acc = selectedAccountsMap.get(Number(key));
+      if (acc) selected.push(acc);
+    }
     if (selected.length === 0) {
       msg.warning('请先勾选要导出的账号');
       return;
     }
     downloadAccountsTxt(selected);
-    msg.success(`已导出 ${selected.length} 个账号`);
+    const missing = selectedRowKeys.length - selected.length;
+    if (missing > 0) {
+      msg.warning(`已导出 ${selected.length} 个，另有 ${missing} 个无法定位（已被删除？）`);
+    } else {
+      msg.success(`已导出 ${selected.length} 个账号`);
+    }
   };
 
   const handleBatchTagSubmit = async () => {
@@ -509,8 +546,21 @@ const AccountsPage: React.FC = () => {
           onChange={handleTableChange}
           rowSelection={{
             selectedRowKeys,
-            onChange: setSelectedRowKeys,
             preserveSelectedRowKeys: true,
+            onChange: (keys, rows) => {
+              setSelectedRowKeys(keys);
+              setSelectedAccountsMap((prev) => {
+                const next = new Map(prev);
+                const keysSet = new Set(keys.map(Number));
+                for (const k of Array.from(next.keys())) {
+                  if (!keysSet.has(k)) next.delete(k);
+                }
+                for (const r of rows) {
+                  if (keysSet.has(r.id)) next.set(r.id, r);
+                }
+                return next;
+              });
+            },
           }}
         />
       </div>
