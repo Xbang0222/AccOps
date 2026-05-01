@@ -57,6 +57,28 @@ async def clean_all_caches():
     return await asyncio.to_thread(browser_manager.clean_all_caches)
 
 
+@router.post("/storage/prune-dead")
+async def prune_dead_browsers():
+    """剔除僵尸浏览器 instance
+
+    适用场景: 用户在桌面手动关闭/强制退出浏览器后, 后端仍记录其为运行中,
+    导致清理缓存被跳过 / 启动报 "已在运行中"。该接口主动探活并清理。
+    """
+    pruned = await asyncio.to_thread(browser_manager.prune_dead_instances)
+    return {"pruned_count": len(pruned), "pruned_profile_ids": pruned}
+
+
+@router.post("/storage/force-clear")
+async def force_clear_all_browsers():
+    """强制清空所有运行中浏览器记录 (备用兜底)
+
+    使用场景: 用户已在桌面强制关闭多个浏览器, 但探活因 PID 复用等边界问题
+    未能识别为僵尸。此端点直接清空内存中所有 instance 记录, 后端立即回到
+    "无浏览器运行" 状态。
+    """
+    return await asyncio.to_thread(browser_manager.force_clear_all)
+
+
 # ── 集合路由 ──
 
 

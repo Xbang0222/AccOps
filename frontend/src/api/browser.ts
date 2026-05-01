@@ -68,6 +68,19 @@ export interface CleanResult {
   cleaned_count: number;
   freed_bytes: number;
   skipped_running: number;
+  pruned_dead: number;
+}
+
+export interface PruneDeadResult {
+  pruned_count: number;
+  pruned_profile_ids: number[];
+}
+
+export interface ForceClearResult {
+  cleared_alive: number[];
+  cleared_dead: number[];
+  killed_pids: number[];
+  total: number;
 }
 
 export const getStorageStats = () =>
@@ -75,3 +88,9 @@ export const getStorageStats = () =>
 
 export const cleanAllCaches = () =>
   client.post<CleanResult>(`${BASE}/storage/clean`);
+
+export const pruneDeadBrowsers = () =>
+  client.post<PruneDeadResult>(`${BASE}/storage/prune-dead`);
+
+export const forceClearAllBrowsers = () =>
+  client.post<ForceClearResult>(`${BASE}/storage/force-clear`);

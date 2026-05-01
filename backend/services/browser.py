@@ -8,7 +8,9 @@
 
 import json
 import logging
+import os
 import shutil
+import signal
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -91,10 +93,124 @@ class BrowserManager:
         data_dir.mkdir(parents=True, exist_ok=True)
         return data_dir
 
+    @staticmethod
+    def _process_alive(pid: int | None) -> bool:
+        """检测 PID 对应的进程是否存活 (POSIX: signal 0 探测)
+
+        已知边界: 仅校验 PID 当前对应一个活进程, 无法区分是否为原浏览器进程。
+        极端场景 (浏览器死亡 + OS 将相同 PID 复用给其他进程) 下会误判为存活。
+        实际触发概率极低, 当前实现接受该边界条件。后续如需更严格校验,
+        可引入 psutil.Process(pid).create_time() 比对启动时刻。
+        """
+        if not pid or pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # 进程存在但无权发送信号, 视为存活
+            return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _instance_pid(instance: BrowserInstance | None) -> int | None:
+        """安全提取 instance 对应的浏览器进程 PID, 不可访问返回 None"""
+        if not instance or not instance.page:
+            return None
+        try:
+            return instance.page.process_id
+        except Exception:
+            return None
+
+    @classmethod
+    def _check_alive(cls, instance: BrowserInstance | None) -> bool:
+        """探活某个 instance 对应的浏览器进程"""
+        return cls._process_alive(cls._instance_pid(instance))
+
+    @staticmethod
+    def _terminate_pid(pid: int | None) -> bool:
+        """向 PID 发送 SIGTERM 强制退出, 成功返回 True"""
+        if not pid or pid <= 0:
+            return False
+        try:
+            os.kill(pid, signal.SIGTERM)
+            return True
+        except (ProcessLookupError, PermissionError, OSError):
+            return False
+
+    def prune_dead_instances(self) -> list[int]:
+        """剔除所有进程已退出的僵尸 instance, 返回被清理的 profile_id 列表
+
+        典型触发场景: 用户在桌面手动关闭浏览器窗口 / Cmd+Q 强制退出后,
+        后端 `_instances` 字典里仍残留记录, 导致 is_running 误报。
+
+        注意: 进程已死后不再调用 page.quit() —— DrissionPage 内部会通过 CDP
+        socket 通信, 进程不在了会卡到 socket 超时。直接丢弃 instance 引用,
+        让 GC 回收即可。
+        """
+        dead: list[int] = [
+            profile_id
+            for profile_id in list(self._instances.keys())
+            if not self._check_alive(self._instances.get(profile_id))
+        ]
+
+        for profile_id in dead:
+            self._instances.pop(profile_id, None)
+            logger.info(f"[browser] 清理僵尸 instance: profile_id={profile_id}")
+
+        return dead
+
+    def force_clear_all(self) -> dict:
+        """强制清空所有 instance 记录 (备用兜底方案)
+
+        使用场景: 用户在桌面手动关闭多个浏览器后, 探活逻辑因 PID 复用等边界
+        问题未能识别为僵尸, 此时一键清空所有运行中记录。
+
+        对存活进程: 直接 SIGTERM 强制退出 (不调 page.quit() 避免 CDP 卡死),
+        然后清空记录。失败也继续清空记录 —— "force" 语义保证后端状态归零。
+        """
+        cleared_alive: list[int] = []
+        cleared_dead: list[int] = []
+        killed_pids: list[int] = []
+
+        for profile_id in list(self._instances.keys()):
+            instance = self._instances.pop(profile_id, None)
+            pid = self._instance_pid(instance)
+
+            if self._process_alive(pid):
+                cleared_alive.append(profile_id)
+                if pid is not None and self._terminate_pid(pid):
+                    killed_pids.append(pid)
+            else:
+                cleared_dead.append(profile_id)
+
+        logger.info(
+            f"[browser] force_clear_all: 清空 {len(cleared_alive)} 个存活 instance "
+            f"(SIGTERM {len(killed_pids)} 个 PID), {len(cleared_dead)} 个僵尸 instance"
+        )
+        return {
+            "cleared_alive": cleared_alive,
+            "cleared_dead": cleared_dead,
+            "killed_pids": killed_pids,
+            "total": len(cleared_alive) + len(cleared_dead),
+        }
+
     def is_running(self, profile_id: int) -> bool:
-        return profile_id in self._instances
+        instance = self._instances.get(profile_id)
+        if instance is None:
+            return False
+        if self._check_alive(instance):
+            return True
+        # 僵尸 instance 自动清理
+        self._instances.pop(profile_id, None)
+        logger.info(f"[browser] is_running 探测到僵尸 instance, 已清理: profile_id={profile_id}")
+        return False
 
     def get_running_ids(self) -> list[int]:
+        self.prune_dead_instances()
         return list(self._instances.keys())
 
     def find_profile_id_by_page(self, page) -> int | None:
@@ -176,7 +292,12 @@ class BrowserManager:
                 logger.warning(f"Error stopping profile {profile_id}: {e}")
 
     def get_status(self, profile_id: int) -> dict:
-        if profile_id not in self._instances:
+        """查询浏览器运行状态
+
+        副作用: 走 is_running 探活, 命中僵尸 instance 时会顺带清理记录。
+        从用户视角无害 (清理本应清理的脏数据), 但严格 REST 风格下 GET 应幂等。
+        """
+        if not self.is_running(profile_id):
             return {"status": "stopped", "profile_id": profile_id}
         return {"status": "running", "profile_id": profile_id}
 
@@ -461,6 +582,8 @@ class BrowserManager:
 
     def clean_all_caches(self) -> dict:
         """清理所有 profile 的 Chromium 缓存子目录（保留 cookies/登录态）"""
+        # 先剔除僵尸 instance, 避免桌面手动关闭的浏览器仍占着 "运行中" 名额
+        pruned_dead = self.prune_dead_instances()
         running_ids = set(self._instances.keys())
         mapping_file = PROFILES_DIR / ".mapping.json"
         mapping: dict = {}
@@ -513,6 +636,7 @@ class BrowserManager:
             "cleaned_count": cleaned_count,
             "freed_bytes": freed_bytes,
             "skipped_running": skipped_running,
+            "pruned_dead": len(pruned_dead),
         }
 
 

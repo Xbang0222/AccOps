@@ -15,8 +15,37 @@ import {
   DeleteOutlined,
   DatabaseOutlined,
   ReloadOutlined,
+  ThunderboltOutlined,
+  PoweroffOutlined,
 } from '@ant-design/icons';
-import { getStorageStats, cleanAllCaches, type StorageStats } from '@/api';
+import axios from 'axios';
+import {
+  getStorageStats,
+  cleanAllCaches,
+  pruneDeadBrowsers,
+  forceClearAllBrowsers,
+  type StorageStats,
+} from '@/api';
+
+/** 把 API 错误映射为用户能看懂的中文提示 */
+function describeApiError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status;
+    const detail =
+      typeof err.response?.data?.detail === 'string'
+        ? err.response.data.detail
+        : null;
+
+    if (status === 404 || status === 405) {
+      return '后端未加载新代码，请重启后端 (./stop.sh && ./start.sh)';
+    }
+    if (status === 401) return '认证已失效，请重新登录';
+    if (!err.response) return '无法连接后端，请确认服务在运行';
+    return detail ?? `服务端错误 (HTTP ${status})`;
+  }
+  if (err instanceof Error) return err.message;
+  return '未知错误';
+}
 
 const { Text, Paragraph } = Typography;
 
@@ -47,6 +76,8 @@ function StorageStatsCard() {
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const [pruning, setPruning] = useState(false);
+  const [forceClearing, setForceClearing] = useState(false);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -72,14 +103,57 @@ function StorageStatsCard() {
       message.success(
         `清理完成！释放 ${freedStr}，清理了 ${data.cleaned_count} 个 profile`,
       );
+      if (data.pruned_dead > 0) {
+        message.info(`已剔除 ${data.pruned_dead} 个僵尸浏览器记录`);
+      }
       if (data.skipped_running > 0) {
         message.info(`跳过 ${data.skipped_running} 个运行中的浏览器`);
       }
       fetchStats();
-    } catch {
-      message.error('清理失败');
+    } catch (err) {
+      message.error(`清理失败：${describeApiError(err)}`);
     } finally {
       setCleaning(false);
+    }
+  };
+
+  const handlePruneDead = async () => {
+    setPruning(true);
+    try {
+      const { data } = await pruneDeadBrowsers();
+      if (data.pruned_count > 0) {
+        message.success(
+          `已剔除 ${data.pruned_count} 个僵尸浏览器记录 (profile_id=${data.pruned_profile_ids.join(', ')})`,
+        );
+      } else {
+        message.info('没有发现僵尸浏览器，记录均与实际进程一致');
+      }
+    } catch (err) {
+      message.error(`检测失败：${describeApiError(err)}`);
+    } finally {
+      setPruning(false);
+    }
+  };
+
+  const handleForceClearAll = async () => {
+    setForceClearing(true);
+    try {
+      const { data } = await forceClearAllBrowsers();
+      if (data.total === 0) {
+        message.info('没有运行中的浏览器记录');
+      } else {
+        const killedHint =
+          data.killed_pids.length > 0
+            ? `，已 SIGTERM 终结 ${data.killed_pids.length} 个浏览器进程`
+            : '';
+        message.success(
+          `已强制清空 ${data.total} 个浏览器记录 (存活 ${data.cleared_alive.length} / 僵尸 ${data.cleared_dead.length})${killedHint}`,
+        );
+      }
+    } catch (err) {
+      message.error(`强制清空失败：${describeApiError(err)}`);
+    } finally {
+      setForceClearing(false);
     }
   };
 
@@ -202,24 +276,51 @@ function StorageStatsCard() {
             )}
           </Flex>
 
-          <Popconfirm
-            title="确认清理缓存？"
-            description={`将清理 ${storageStats.profile_count} 个 profile 的 Chromium 缓存数据，预计释放 ${formatBytes(storageStats.cleanable_bytes)}。运行中的浏览器会自动跳过，cookies 和登录态不受影响。`}
-            onConfirm={handleCleanCaches}
-            okText="确认清理"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-            placement="topRight"
-          >
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              loading={cleaning}
-              disabled={!storageStats.cleanable_bytes}
+          <Flex gap={8} wrap="wrap">
+            <Popconfirm
+              title="确认清理缓存？"
+              description={`将清理 ${storageStats.profile_count} 个 profile 的 Chromium 缓存数据，预计释放 ${formatBytes(storageStats.cleanable_bytes)}。真正运行中的浏览器会跳过，cookies 和登录态不受影响。`}
+              onConfirm={handleCleanCaches}
+              okText="确认清理"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              placement="topRight"
             >
-              清理所有缓存
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                loading={cleaning}
+                disabled={!storageStats.cleanable_bytes}
+              >
+                清理所有缓存
+              </Button>
+            </Popconfirm>
+            <Button
+              icon={<ThunderboltOutlined />}
+              loading={pruning}
+              onClick={handlePruneDead}
+              title="桌面强制关闭浏览器后，后端可能仍记录其为运行中。点此主动检测并剔除僵尸记录。"
+            >
+              检测僵尸浏览器
             </Button>
-          </Popconfirm>
+            <Popconfirm
+              title="确认强制清空所有浏览器？"
+              description="兜底方案：对存活浏览器发 SIGTERM 强制退出，并清空后端所有运行中记录。适用于桌面已关不掉、或后端记录与实际不一致的场景。"
+              onConfirm={handleForceClearAll}
+              okText="强制清空"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              placement="topRight"
+            >
+              <Button
+                danger
+                icon={<PoweroffOutlined />}
+                loading={forceClearing}
+              >
+                一键清空全部
+              </Button>
+            </Popconfirm>
+          </Flex>
         </div>
       ) : (
         <Text type="secondary">无法获取存储信息</Text>
